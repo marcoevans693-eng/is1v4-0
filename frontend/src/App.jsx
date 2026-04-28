@@ -2,7 +2,7 @@ import React from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import {
   Search, MessageCircle, FileText, Folder, FilePlus,
-  History, Rocket, BookOpen
+  History, Rocket, BookOpen, ScrollText
 } from 'lucide-react'
 import { ToastProvider } from './components/shared/Toast'
 import ErrorBoundary from './components/shared/ErrorBoundary'
@@ -19,6 +19,7 @@ import CampaignsView from './components/campaigns/CampaignsView'
 import ModuleBar from './components/moduleBar/ModuleBar'
 import ThinkRouterLayout from './components/thinkrouter/ThinkRouterLayout'
 import ComingSoon from './components/shared/ComingSoon'
+import SpecsView from './components/specs/SpecsView'
 import UsageDashboard from './components/thinkrouter/UsageDashboard'
 
 const MODULE_ROUTES = ['/thinkrouter', '/harvester', '/thinkrouter/usage']
@@ -59,6 +60,9 @@ function AppShell() {
             <NavLink to="/knowledge" end className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
               <BookOpen size={15} /> Knowledge
             </NavLink>
+            <NavLink to="/specs" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+              <ScrollText size={15} /> Specs
+            </NavLink>
           </nav>
         )}
         {isModuleRoute ? (
@@ -78,6 +82,7 @@ function AppShell() {
               <Route path="/queries" element={<ErrorBoundary><QueryHistoryView /></ErrorBoundary>} />
               <Route path="/observability" element={<ErrorBoundary><ObservabilityDashboard /></ErrorBoundary>} />
               <Route path="/campaigns" element={<ErrorBoundary><CampaignsView /></ErrorBoundary>} />
+              <Route path="/specs" element={<ErrorBoundary><SpecsView /></ErrorBoundary>} />
             </Routes>
           </main>
         )}

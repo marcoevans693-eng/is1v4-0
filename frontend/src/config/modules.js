@@ -24,4 +24,11 @@ export const MODULES = [
     defaultRoute: '/harvester',
     status: 'placeholder',
   },
+  {
+    id: 'specs',
+    label: 'Spec System',
+    icon: 'ScrollText',
+    defaultRoute: '/specs',
+    status: 'placeholder',
+  },
 ];

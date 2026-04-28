@@ -8,6 +8,7 @@ from backend.routers.tags import router as tags_router
 from backend.routers.folders import router as folders_router
 from backend.routers.campaigns import router as campaigns_router
 from backend.routers.knowledge import router as knowledge_router
+from backend.routers.specs import router as specs_router
 from backend.routers.queries import router as queries_router
 from backend.routers.chat import router as chat_router
 from backend.routers.observability import router as observability_router
@@ -24,6 +25,7 @@ app.include_router(tags_router)
 app.include_router(folders_router)
 app.include_router(campaigns_router)
 app.include_router(knowledge_router)
+app.include_router(specs_router)
 app.include_router(queries_router)
 app.include_router(chat_router)
 app.include_router(observability_router)
