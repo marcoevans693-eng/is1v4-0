@@ -1,0 +1,52 @@
+# IS1-TR Model Registry
+# Source of truth for model dropdown in IS1ThinkRouter.
+# Marco: confirm OpenAI and Google SKUs/pricing against provider API docs before Phase 2 gate.
+
+models:
+  - sku: claude-opus-4-6
+    label: "Claude Opus 4.6"
+    provider: anthropic
+    context_window: 200000
+    cost_per_1k_in: 0.015
+    cost_per_1k_out: 0.075
+    default_temperature: 1.0
+    default_max_tokens: 4096
+
+  - sku: claude-sonnet-4-6
+    label: "Claude Sonnet 4.6"
+    provider: anthropic
+    context_window: 200000
+    cost_per_1k_in: 0.003
+    cost_per_1k_out: 0.015
+    default_temperature: 1.0
+    default_max_tokens: 4096
+
+  - sku: gpt-4o
+    label: "GPT-4o"
+    provider: openai
+    context_window: 128000
+    cost_per_1k_in: 0.0025
+    cost_per_1k_out: 0.010
+    default_temperature: 1.0
+    default_max_tokens: 4096
+    # TODO: confirm SKU string against OpenAI API docs
+
+  - sku: o4-mini
+    label: "o4-mini"
+    provider: openai
+    context_window: 128000
+    cost_per_1k_in: 0.0011
+    cost_per_1k_out: 0.0044
+    default_temperature: 1.0
+    default_max_tokens: 4096
+    # TODO: confirm SKU string and pricing against OpenAI API docs
+
+  - sku: gemini-2.5-pro
+    label: "Gemini 2.5 Pro"
+    provider: google
+    context_window: 1000000
+    cost_per_1k_in: 0.00125
+    cost_per_1k_out: 0.010
+    default_temperature: 1.0
+    default_max_tokens: 4096
+    # TODO: confirm pricing against Google AI API docs

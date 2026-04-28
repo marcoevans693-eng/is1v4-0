@@ -1,0 +1,82 @@
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--bg-nav);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow-y: auto;
+}
+.sidebar-brand {
+  font-size: 17px;
+  font-weight: 700;
+  color: #FFFFFF;
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  letter-spacing: 0.02em;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  color: var(--text-nav);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition: color 0.15s, background 0.15s;
+  border-left: 3px solid transparent;
+}
+.nav-item:hover {
+  color: #FFFFFF;
+  background: var(--bg-nav-hover);
+}
+.nav-item.active {
+  color: #FFFFFF;
+  background: var(--bg-nav-active);
+  border-left: 3px solid var(--accent);
+}
+.nav-item svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+.nav-item.active svg,
+.nav-item:hover svg {
+  opacity: 1;
+}
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg-base);
+  min-width: 0;
+}
+
+/* Nav divider */
+.nav-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 10px 20px;
+}
+
+/* Disabled nav item (dead link) */
+.nav-item--disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+.nav-item--disabled:hover {
+  color: var(--text-nav);
+  background: transparent;
+}

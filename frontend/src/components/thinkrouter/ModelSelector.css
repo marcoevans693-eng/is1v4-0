@@ -1,0 +1,22 @@
+.model-selector {
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  padding: 5px 10px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.model-selector:focus {
+  border-color: var(--accent);
+}
+
+.model-selector-error {
+  font-family: var(--font);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

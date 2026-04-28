@@ -1,0 +1,146 @@
+.conv-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.conv-sidebar-header {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.conv-new-btn {
+  width: 100%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.conv-new-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.conv-new-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.conv-sidebar-error {
+  font-family: var(--font);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: 8px 12px;
+}
+
+.conv-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.conv-empty {
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-align: center;
+  padding: 32px 12px;
+}
+
+.conv-row {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.1s;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.conv-row:hover {
+  background: var(--accent-light);
+}
+
+.conv-row--active {
+  border-left-color: var(--accent);
+  background: var(--accent-light);
+}
+
+.conv-row-title {
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conv-row-time {
+  font-family: var(--font);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.conv-row-rename {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.conv-rename-input {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  padding: 2px 6px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.conv-rename-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 128, 128, 0.15);
+}
+
+.conv-rename-error {
+  font-family: var(--font);
+  font-size: var(--text-xs);
+  color: #c0392b;
+}
+
+.conv-footer {
+  border-top: 1px solid var(--border);
+  padding: 6px 0;
+  flex-shrink: 0;
+}
+
+.conv-footer-item {
+  padding: 8px 14px;
+  font-family: var(--font);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.conv-footer-item:hover {
+  background: var(--sidebar-hover, #3D2512);
+  color: var(--text-nav, #D4C4B5);
+}

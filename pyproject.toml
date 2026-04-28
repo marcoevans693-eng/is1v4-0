@@ -1,0 +1,29 @@
+[project]
+name = "intellisys1-v3"
+version = "0.1.0"
+description = "IS1v3 — Personal AI Intelligence Hub"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "httpx>=0.28.0",
+    "anthropic>=0.52.0",
+    "openai>=1.70.0",
+    "google-generativeai>=0.8.0",
+    "qdrant-client>=1.13.0",
+    "psycopg2-binary>=2.9.0",
+    "duckdb>=1.2.0",
+    "tiktoken>=0.9.0",
+    "python-dotenv>=1.1.0",
+    "langchain-core>=0.3.0",
+    "langgraph>=0.4.0",
+    "langgraph-checkpoint-postgres>=2.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["backend*"]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"

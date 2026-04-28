@@ -1,0 +1,99 @@
+.ingest-panel {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.ingest-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 28px;
+}
+
+.ingest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ingest-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ingest-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.ingest-textarea {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font);
+  resize: vertical;
+  outline: none;
+  line-height: 1.6;
+}
+.ingest-textarea:focus { border-color: var(--accent); }
+.ingest-textarea::placeholder { color: var(--text-muted); }
+
+.ingest-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: var(--font);
+  outline: none;
+}
+.ingest-input:focus { border-color: var(--accent); }
+.ingest-input::placeholder { color: var(--text-muted); }
+
+.ingest-error {
+  padding: 10px 14px;
+  background: rgba(192,57,43,0.08);
+  border: 1px solid rgba(192,57,43,0.3);
+  border-radius: 6px;
+  color: var(--accent-danger);
+  font-size: var(--text-sm);
+}
+
+.ingest-toast {
+  padding: 10px 14px;
+  background: rgba(39,174,96,0.08);
+  border: 1px solid rgba(39,174,96,0.3);
+  border-radius: 6px;
+  color: #27AE60;
+  font-size: var(--text-sm);
+  margin-bottom: 8px;
+}
+
+.ingest-submit {
+  padding: 12px 24px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  align-self: flex-start;
+  transition: background 0.15s;
+}
+.ingest-submit:hover:not(:disabled) { background: var(--accent-hover); }
+.ingest-submit:disabled {
+  background: var(--border);
+  cursor: not-allowed;
+  color: var(--text-muted);
+}

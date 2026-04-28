@@ -1,0 +1,163 @@
+/* FolderSelector.css — IS1v3.1 Phase 3 + Gate 16
+   All class names: fs-wrap/fs-btn/fs-menu (cache-busted in Phase 3).
+   Dropdown uses position:absolute, opens upward.
+   Gate 16: drag handle + dragging state added. */
+
+.fs-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 160px;
+}
+
+.fs-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text-primary);
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.fs-btn:hover {
+  border-color: var(--accent);
+}
+
+.fs-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.fs-label--empty {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.fs-arrow {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: 6px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* Dropdown — opens UPWARD by default, absolute to fs-wrap */
+.fs-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  width: 220px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Downward variant — used in IngestPanel where selector is near top */
+.fs-menu--down {
+  bottom: auto;
+  top: calc(100% + 4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.fs-filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font);
+}
+
+.fs-list {
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.fs-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: background 0.1s;
+}
+
+.fs-item:hover {
+  background: var(--bg-base);
+}
+
+.fs-item--dragging {
+  background: var(--bg-base);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+.fs-item-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.fs-item--none {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.fs-item--create {
+  color: var(--accent);
+}
+
+.fs-item--empty {
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* Gate 16: drag handle */
+.fs-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+  cursor: grab;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.fs-drag-handle:hover {
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.fs-drag-handle:active {
+  cursor: grabbing;
+}

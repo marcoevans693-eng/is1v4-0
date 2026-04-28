@@ -1,0 +1,49 @@
+.dcm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.dcm-dialog {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  max-width: 440px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+
+.dcm-loading { color: var(--text-secondary); font-size: 0.9rem; }
+.dcm-error { color: var(--accent-danger); font-size: 0.875rem; margin-bottom: 16px; }
+
+.dcm-title { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin: 0 0 16px; line-height: 1.3; }
+
+.dcm-summary-label { color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 8px; }
+
+.dcm-list { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-direction: column; gap: 6px; }
+
+.dcm-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.dcm-list li::before { content: '•'; color: var(--accent-danger); font-size: 1rem; flex-shrink: 0; }
+
+.dcm-preserved {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-style: italic;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.dcm-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }

@@ -1,0 +1,168 @@
+.turn-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 0 4px 0;
+}
+
+.turn-user-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 16px;
+}
+
+.turn-user-bubble {
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  max-width: 72%;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.turn-assistant-row {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 16px;
+}
+
+.turn-assistant-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 12px 14px;
+  max-width: 84%;
+  width: 100%;
+}
+
+.turn-model-label {
+  display: block;
+  font-family: var(--font);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.turn-assistant-content {
+  font-family: var(--font);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.turn-assistant-content p { margin: 0 0 8px 0; }
+.turn-assistant-content p:last-child { margin-bottom: 0; }
+.turn-assistant-content pre { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: var(--radius-sm); overflow-x: auto; font-size: var(--text-sm); }
+.turn-assistant-content code { font-size: var(--text-sm); background: rgba(91,143,168,0.1); padding: 1px 5px; border-radius: 3px; }
+.turn-assistant-content pre code { background: none; padding: 0; }
+.turn-assistant-content ul, .turn-assistant-content ol { padding-left: 20px; margin: 6px 0; }
+.turn-assistant-content li { margin-bottom: 3px; }
+.turn-assistant-content strong { font-weight: 600; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+}
+
+.turn-loading-pulse {
+  height: 18px;
+  width: 60%;
+  background: var(--border);
+  border-radius: var(--radius-sm);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.turn-bubble--highlight {
+  animation: turn-highlight-fade 1.5s ease-out forwards;
+}
+
+@keyframes turn-highlight-fade {
+  0%   { background: rgba(91, 143, 168, 0.18); }
+  100% { background: transparent; }
+}
+
+.turn-edit-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.turn-edit-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-input, #d4c5b2);
+  border-radius: var(--radius-sm, 6px);
+  font-family: var(--font, Inter, sans-serif);
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--text-primary, #2c1f14);
+  background: #ffffff;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.turn-edit-textarea:focus {
+  outline: none;
+  border-color: var(--accent, #5B8FA8);
+}
+
+.turn-edit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.turn-edit-save {
+  padding: 5px 12px;
+  background: var(--accent, #5B8FA8);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  font-family: var(--font, Inter, sans-serif);
+  font-size: var(--text-xs, 0.75rem);
+  cursor: pointer;
+}
+
+.turn-edit-save:hover {
+  background: #4a7e96;
+}
+
+.turn-edit-cancel {
+  padding: 5px 12px;
+  background: transparent;
+  color: var(--text-secondary, #5a4d44);
+  border: 1px solid var(--border, #e8ddd0);
+  border-radius: var(--radius-sm, 6px);
+  font-family: var(--font, Inter, sans-serif);
+  font-size: var(--text-xs, 0.75rem);
+  cursor: pointer;
+}
+
+.turn-edit-cancel:hover {
+  border-color: var(--accent, #5B8FA8);
+  color: var(--accent, #5B8FA8);
+}
+
+.turn-action-btn {
+  background: transparent;
+  border: 1px solid var(--border, #e8ddd0);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.8rem;
+  padding: 3px 7px;
+  cursor: pointer;
+  color: var(--text-secondary, #5a4d44);
+  transition: border-color 0.15s, color 0.15s;
+  margin-top: 4px;
+}
+
+.turn-action-btn:hover {
+  border-color: var(--accent, #5B8FA8);
+  color: var(--accent, #5B8FA8);
+}

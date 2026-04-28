@@ -1,0 +1,40 @@
+.mrv-container { width: 100%; }
+.mrv-loading { display: flex; justify-content: center; padding: 32px 0; }
+.mrv-empty { color: var(--text-muted); padding: 32px 0; text-align: center; font-size: 0.9rem; }
+.mrv-error { color: var(--accent-danger); padding: 16px; text-align: center; font-size: 0.875rem; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+.mrv-list { display: flex; flex-direction: column; gap: 8px; }
+
+.mrv-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.mrv-rank { color: var(--text-muted); font-size: 0.9rem; font-weight: 700; min-width: 30px; }
+
+.mrv-info { flex: 1; min-width: 0; }
+
+.mrv-title {
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: block;
+  margin-bottom: 4px;
+}
+.mrv-title:hover { text-decoration: underline; }
+.mrv-deleted { color: var(--text-muted); font-style: italic; font-size: 0.875rem; }
+
+.mrv-meta-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+.mrv-folder-badge { padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; color: #fff; }
+.mrv-tag-pill { padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; color: #fff; }
+
+.mrv-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.mrv-count { font-weight: 700; color: var(--accent); font-size: 0.9rem; }
+.mrv-date { color: var(--text-muted); font-size: 0.78rem; }

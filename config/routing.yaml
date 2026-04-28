@@ -1,0 +1,39 @@
+# IntelliSys1 v2 — LLM Routing Table
+# Rebuilt March 21, 2026 — Broke Gate rebuild.
+# Ollama removed permanently. All inference via external API providers.
+# Failover: Anthropic → OpenAI → Google. No skip.
+
+routing:
+  failover_order:
+    - anthropic_sonnet
+    - openai_gpt4o
+    - google_gemini
+
+  budget_ceiling_per_request_usd: 0.10
+  chars_per_token: 4
+  output_token_cap: 2048
+
+  models:
+    anthropic_sonnet:
+      provider: anthropic
+      model: "claude-sonnet-4-20250514"
+      cost_per_1k_input: 0.003
+      cost_per_1k_output: 0.015
+      max_context: 200000
+      enabled: true
+
+    openai_gpt4o:
+      provider: openai
+      model: "gpt-4o"
+      cost_per_1k_input: 0.0025
+      cost_per_1k_output: 0.010
+      max_context: 128000
+      enabled: true
+
+    google_gemini:
+      provider: google
+      model: "gemini-2.5-pro"
+      cost_per_1k_input: 0.00125
+      cost_per_1k_output: 0.010
+      max_context: 1000000
+      enabled: true

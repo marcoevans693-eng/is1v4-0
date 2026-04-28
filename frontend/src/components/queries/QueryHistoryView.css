@@ -1,0 +1,110 @@
+.qhv-container { padding: 24px; }
+.qhv-title { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin: 0 0 16px; }
+.qhv-loading { display: flex; justify-content: center; padding: 32px 0; }
+.qhv-empty { color: var(--text-muted); padding: 32px 0; text-align: center; font-size: 0.9rem; }
+.qhv-error { color: var(--accent-danger); padding: 16px; text-align: center; font-size: 0.875rem; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+.qhv-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+
+.qhv-select, .qhv-input {
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-family: var(--font);
+}
+.qhv-select:focus, .qhv-input:focus { outline: none; border-color: var(--accent); }
+.qhv-input::placeholder { color: var(--text-muted); }
+.qhv-date { width: 140px; }
+
+.qhv-clear-btn {
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: var(--font);
+}
+.qhv-clear-btn:hover { color: var(--text-primary); }
+
+.qhv-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.qhv-th {
+  text-align: left;
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.qhv-row:hover { background: var(--bg-surface); }
+.qhv-td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+
+.qhv-query-text { color: var(--text-primary); max-width: 280px; }
+.qhv-mode-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; color: #fff; }
+.qhv-num { color: var(--text-muted); white-space: nowrap; }
+.qhv-date { color: var(--text-muted); font-size: 0.82rem; white-space: nowrap; }
+.qhv-actions { display: flex; gap: 4px; }
+
+.qhv-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 3px 7px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+.qhv-icon-btn:hover { background: var(--bg-base); color: var(--text-primary); }
+.qhv-icon-btn:disabled { opacity: 0.4; cursor: default; }
+
+.qhv-detail-td {
+  padding: 0;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border);
+}
+.qhv-rerun-td { padding: 0; background: var(--bg-surface); border-bottom: 1px solid var(--border); }
+.qhv-rerun-result { padding: 12px 24px; }
+.qhv-rerun-label { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px; }
+.qhv-rerun-text { color: var(--text-primary); font-size: 0.875rem; white-space: pre-wrap; }
+.qhv-rerun-list { color: var(--text-primary); font-size: 0.875rem; padding-left: 20px; }
+.qhv-rerun-raw { color: var(--text-secondary); font-size: 0.78rem; overflow: auto; }
+.qhv-dismiss-btn {
+  margin-top: 8px;
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-family: var(--font);
+}
+
+.qhv-pagination { display: flex; align-items: center; gap: 12px; justify-content: center; padding: 16px 0; }
+.qhv-page-info { color: var(--text-muted); font-size: 0.875rem; }
+
+/* QueryDetailRow */
+.qdr-container { padding: 12px 24px; }
+.qdr-loading, .qdr-error { color: var(--text-muted); padding: 8px 24px; font-size: 0.82rem; }
+.qdr-full-query { color: var(--text-primary); font-size: 0.875rem; margin-bottom: 10px; white-space: pre-wrap; }
+.qdr-docs-label { color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 6px; }
+.qdr-docs-list { list-style: none; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column; gap: 4px; }
+.qdr-doc-link { color: var(--accent); cursor: pointer; font-size: 0.875rem; }
+.qdr-doc-link:hover { text-decoration: underline; }
+.qdr-deleted { color: var(--text-muted); font-style: italic; font-size: 0.875rem; }
+.qdr-rerun-btn {
+  padding: 5px 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: var(--font);
+}
+.qdr-rerun-btn:hover { background: var(--accent-hover); }
+.qdr-rerun-btn:disabled { opacity: 0.5; cursor: default; }

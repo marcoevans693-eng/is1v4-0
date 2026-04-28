@@ -1,0 +1,27 @@
+.coming-soon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 400px;
+  background: var(--bg-base);
+}
+
+.coming-soon-inner {
+  text-align: center;
+}
+
+.coming-soon-label {
+  font-family: var(--font);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.coming-soon-sub {
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0;
+}

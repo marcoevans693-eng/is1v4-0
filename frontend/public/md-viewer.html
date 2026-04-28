@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>MD Viewer</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=Source+Sans+3:wght@400;500;600&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+:root {
+  --cream: #F7F3EE; --white: #FFFFFF; --ink: #1C1917; --ink-muted: #78716C;
+  --ink-faint: #C8BEB5; --accent: #5B8FA8; --accent-light: #EBF2F6;
+  --amber: #2C1A0E; --code-bg: #1E1B18; --code-fg: #E8DED4;
+  --border: #EAE4DC; --radius: 12px;
+}
+html, body { height: 100%; height: 100dvh; overflow: hidden; background: var(--cream); color: var(--ink); }
+#edit-mode, #preview-mode { position: fixed; inset: 0; transition: opacity 0.18s ease, transform 0.18s ease; }
+#edit-mode.hidden { opacity: 0; pointer-events: none; transform: translateY(12px); }
+#preview-mode.hidden { opacity: 0; pointer-events: none; transform: translateY(-12px); }
+#edit-mode { display: flex; flex-direction: column; background: var(--cream); }
+.edit-header { padding: 16px 20px 10px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.edit-header-title { font-family: 'Lora', serif; font-size: 16px; font-weight: 600; color: var(--amber); }
+.edit-header-sub { font-family: 'Source Sans 3', sans-serif; font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+.char-count { font-family: 'Source Sans 3', sans-serif; font-size: 12px; color: var(--ink-faint); }
+#md-input { flex: 1; border: none; outline: none; resize: none; padding: 14px 20px 100px; font-family: 'Source Code Pro', monospace; font-size: 13.5px; line-height: 1.7; background: var(--cream); color: var(--ink); -webkit-overflow-scrolling: touch; overflow-y: auto; }
+#md-input::placeholder { color: var(--ink-faint); font-style: italic; }
+.render-btn { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--amber); color: #F7F3EE; font-family: 'Source Sans 3', sans-serif; font-weight: 600; font-size: 15px; letter-spacing: 0.03em; border: none; border-radius: 50px; padding: 14px 36px; cursor: pointer; box-shadow: 0 4px 20px rgba(44,26,14,0.25); z-index: 100; white-space: nowrap; transition: transform 0.12s, box-shadow 0.12s; display: flex; align-items: center; gap: 8px; }
+.render-btn:active { transform: translateX(-50%) scale(0.97); }
+.render-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#preview-mode { background: var(--white); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#preview-scroll { max-width: 680px; margin: 0 auto; padding: 28px 20px 120px; }
+#preview-scroll h1 { font-family: 'Lora', serif; font-size: 1.85em; font-weight: 600; line-height: 1.25; margin: 0 0 0.6em; padding-bottom: 0.4em; border-bottom: 2px solid var(--border); }
+#preview-scroll h2 { font-family: 'Lora', serif; font-size: 1.35em; font-weight: 600; line-height: 1.3; margin: 1.8em 0 0.5em; }
+#preview-scroll h3 { font-family: 'Source Sans 3', sans-serif; font-size: 1.05em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin: 1.5em 0 0.4em; }
+#preview-scroll h4 { font-family: 'Source Sans 3', sans-serif; font-size: 1em; font-weight: 600; color: var(--ink-muted); margin: 1.2em 0 0.3em; }
+#preview-scroll p { font-family: 'Source Sans 3', sans-serif; font-size: 16px; line-height: 1.8; margin: 0.65em 0; }
+#preview-scroll ul, #preview-scroll ol { font-family: 'Source Sans 3', sans-serif; font-size: 16px; line-height: 1.8; padding-left: 1.5em; margin: 0.6em 0; }
+#preview-scroll li { margin: 0.2em 0; }
+#preview-scroll li::marker { color: var(--ink-faint); }
+#preview-scroll strong { font-weight: 600; }
+#preview-scroll em { font-style: italic; color: #44403C; }
+#preview-scroll code { font-family: 'Source Code Pro', monospace; font-size: 0.85em; background: #F0EBE4; color: #7C3626; padding: 2px 7px; border-radius: 5px; }
+#preview-scroll pre { background: var(--code-bg); border-radius: var(--radius); padding: 16px 18px; overflow-x: auto; margin: 1.1em 0; }
+#preview-scroll pre code { background: transparent; color: var(--code-fg); font-size: 13px; line-height: 1.65; padding: 0; border-radius: 0; }
+#preview-scroll blockquote { border-left: 3px solid var(--accent); margin: 1.1em 0; padding: 10px 16px; background: var(--accent-light); border-radius: 0 8px 8px 0; }
+#preview-scroll blockquote p { color: #3D5F6F; font-style: italic; margin: 0; }
+#preview-scroll table { width: 100%; border-collapse: collapse; font-family: 'Source Sans 3', sans-serif; font-size: 14px; margin: 1.1em 0; display: block; overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+#preview-scroll th { background: #F5F0EA; font-weight: 600; padding: 9px 13px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+#preview-scroll td { padding: 8px 13px; border-bottom: 1px solid var(--border); vertical-align: top; }
+#preview-scroll tr:last-child td { border-bottom: none; }
+#preview-scroll a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+#preview-scroll hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+#preview-scroll img { max-width: 100%; border-radius: 8px; margin: 0.5em 0; }
+.back-fab { position: fixed; bottom: 28px; right: 22px; width: 52px; height: 52px; border-radius: 50%; background: var(--amber); color: #F7F3EE; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(44,26,14,0.3); z-index: 100; transition: transform 0.12s; }
+.back-fab:active { transform: scale(0.94); }
+.back-fab svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.empty-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; color: var(--ink-faint); font-family: 'Source Sans 3', sans-serif; font-size: 15px; text-align: center; gap: 12px; }
+.empty-preview svg { width: 48px; height: 48px; stroke: var(--ink-faint); fill: none; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+.preview-strip { position: sticky; top: 0; z-index: 10; background: rgba(255,255,255,0.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); padding: 10px 18px; display: flex; align-items: center; justify-content: space-between; }
+.preview-strip-label { font-family: 'Source Sans 3', sans-serif; font-size: 12px; color: var(--ink-muted); font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; }
+.clear-link { font-family: 'Source Sans 3', sans-serif; font-size: 12px; color: var(--ink-faint); background: none; border: none; cursor: pointer; padding: 4px 0; }
+</style>
+</head>
+<body>
+
+<div id="edit-mode">
+  <div class="edit-header">
+    <div>
+      <div class="edit-header-title">IS1 · Markdown Viewer</div>
+      <div class="edit-header-sub">Paste raw markdown → tap Render</div>
+    </div>
+    <span class="char-count" id="char-count">0 chars</span>
+  </div>
+  <textarea id="md-input"
+    placeholder="Paste your IS1 document here…&#10;&#10;Headings, code, tables, lists — all supported."
+    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+  ></textarea>
+  <button class="render-btn" onclick="render()">
+    <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+    Render
+  </button>
+</div>
+
+<div id="preview-mode" class="hidden">
+  <div class="preview-strip">
+    <span class="preview-strip-label">Preview</span>
+    <button class="clear-link" onclick="clearAll()">Clear &amp; reset</button>
+  </div>
+  <div id="preview-scroll">
+    <div class="empty-preview">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      No document yet
+    </div>
+  </div>
+  <button class="back-fab" onclick="backToEdit()">
+    <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+  </button>
+</div>
+
+<script>
+  marked.setOptions({ breaks: true, gfm: true });
+  const input = document.getElementById('md-input');
+  const editMode = document.getElementById('edit-mode');
+  const prevMode = document.getElementById('preview-mode');
+  const counter = document.getElementById('char-count');
+  const scroll = document.getElementById('preview-scroll');
+
+  input.addEventListener('input', () => {
+    const n = input.value.length;
+    counter.textContent = n > 0 ? n.toLocaleString() + ' chars' : '0 chars';
+  });
+
+  input.addEventListener('paste', () => {
+    setTimeout(() => { if (input.value.trim().length > 0) render(); }, 80);
+  });
+
+  function render() {
+    const raw = input.value.trim();
+    if (!raw) return;
+    scroll.innerHTML = marked.parse(raw);
+    prevMode.scrollTop = 0;
+    editMode.classList.add('hidden');
+    prevMode.classList.remove('hidden');
+  }
+
+  function backToEdit() {
+    prevMode.classList.add('hidden');
+    editMode.classList.remove('hidden');
+    setTimeout(() => input.focus(), 50);
+  }
+
+  function clearAll() {
+    if (!confirm('Clear document?')) return;
+    input.value = '';
+    counter.textContent = '0 chars';
+    scroll.innerHTML = '<div class="empty-preview"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>No document yet</div>';
+    prevMode.classList.add('hidden');
+    editMode.classList.remove('hidden');
+  }
+</script>
+</body>
+</html>

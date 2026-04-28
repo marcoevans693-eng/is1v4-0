@@ -1,0 +1,120 @@
+.fv-container { padding: 24px; max-width: 900px; margin: 0 auto; }
+
+.fv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.fv-title { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin: 0; }
+.fv-loading { display: flex; justify-content: center; padding: 32px 0; }
+.fv-empty { color: var(--text-muted); padding: 32px 0; text-align: center; font-size: 0.9rem; }
+.fv-error { color: var(--accent-danger); padding: 16px; text-align: center; font-size: 0.875rem; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+.fv-create-form {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fv-create-actions { display: flex; gap: 8px; }
+
+.fv-list { display: flex; flex-direction: column; gap: 8px; }
+
+.fv-folder-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.fv-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.fv-folder-row:hover { background: rgba(0,0,0,0.03); }
+
+.fv-folder-name { font-weight: 600; color: var(--text-primary); flex: 1; }
+
+.fv-doc-count {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  background: var(--bg-base);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.fv-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.fv-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  transition: opacity 0.1s, background 0.1s;
+}
+.fv-icon-btn:hover { opacity: 1; background: var(--bg-base); }
+.fv-del-btn:hover { background: rgba(192,57,43,0.1); color: var(--accent-danger); }
+
+.fv-chevron { color: var(--text-muted); font-size: 0.85rem; margin-left: 4px; }
+
+.fv-name-input {
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-family: var(--font);
+  flex: 1;
+}
+.fv-name-input:focus { outline: none; border-color: var(--accent); }
+
+.fv-btn-sm { padding: 4px 12px; font-size: 0.8rem; }
+
+.fv-unfiled {
+  border-style: dashed;
+  border-color: var(--border);
+}
+
+.fv-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.fv-confirm-dialog {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+}
+.fv-confirm-dialog p { color: var(--text-primary); margin-bottom: 16px; font-size: 0.9rem; }
+.fv-confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }

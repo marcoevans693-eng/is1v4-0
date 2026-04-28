@@ -1,0 +1,82 @@
+.tms-container {
+  position: relative;
+  width: 100%;
+}
+
+.tms-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: text;
+}
+.tms-input-row:focus-within { border-color: var(--accent); }
+
+.tms-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.tms-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+  margin-left: 2px;
+  color: rgba(255,255,255,0.7);
+}
+.tms-remove:hover { color: #fff; }
+
+.tms-filter-input {
+  flex: 1;
+  min-width: 80px;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: var(--font);
+}
+.tms-filter-input::placeholder { color: var(--text-muted); }
+
+.tms-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  z-index: 100;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+.tms-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.tms-option:hover { background: var(--bg-base); }
+
+.tms-option-pill { padding: 2px 8px; border-radius: 12px; font-size: 13px; font-weight: 500; }
+
+.tms-create { color: var(--accent); }
+
+.tms-max-note { padding: 8px 12px; font-size: 13px; color: var(--text-muted); font-style: italic; }
+.tms-empty { padding: 8px 12px; font-size: 13px; color: var(--text-muted); }

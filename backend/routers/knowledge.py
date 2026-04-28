@@ -1,0 +1,1364 @@
+"""Knowledge document endpoints: ingest, list, detail, update, delete, search, stats, history."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import sys
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import List, Optional
+
+import duckdb
+import psycopg2
+import psycopg2.extras
+import tiktoken
+from fastapi import APIRouter, HTTPException, Query
+from openai import OpenAI
+from pydantic import BaseModel
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    Filter,
+    FieldCondition,
+    MatchValue,
+    PointIdsList,
+    PointStruct,
+    ScrollRequest,
+)
+
+from backend.config import settings
+
+router = APIRouter()
+
+GOVERNANCE_JSONL = "data/governance/ingest_receipts.jsonl"
+CHUNK_MAX_TOKENS = 512
+CHUNK_OVERLAP = 50
+EMBED_BATCH = 20
+
+
+# ---------------------------------------------------------------------------
+# DB helpers
+# ---------------------------------------------------------------------------
+
+def get_conn():
+    return psycopg2.connect(
+        host=settings.POSTGRES_HOST,
+        port=settings.POSTGRES_PORT,
+        dbname=settings.POSTGRES_DB,
+        user=settings.POSTGRES_USER,
+        password=settings.POSTGRES_PASSWORD,
+    )
+
+
+def get_qdrant():
+    return QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+
+
+def get_duckdb():
+    return duckdb.connect(settings.DUCKDB_PATH)
+
+
+# ---------------------------------------------------------------------------
+# Chunking
+# ---------------------------------------------------------------------------
+
+def chunk_text(text: str) -> List[dict]:
+    """Split text on markdown headings, then by token count with overlap."""
+    enc = tiktoken.get_encoding("cl100k_base")
+    import re
+    # Split on markdown headings
+    sections = re.split(r'(?m)^(#{1,6} )', text)
+    # Reassemble: sections[0] is pre-heading text, then pairs of (heading_marker, content)
+    parts = []
+    i = 0
+    raw = sections[0]
+    while i + 1 < len(sections):
+        raw += sections[i + 1] + sections[i + 2] if i + 2 < len(sections) else sections[i + 1]
+        i += 2
+        parts.append(raw)
+        raw = ""
+    if raw:
+        parts.append(raw)
+    if not parts:
+        parts = [text]
+
+    chunks = []
+    chunk_idx = 0
+    for part in parts:
+        tokens = enc.encode(part)
+        if not tokens:
+            continue
+        start = 0
+        while start < len(tokens):
+            end = start + CHUNK_MAX_TOKENS
+            chunk_tokens = tokens[start:end]
+            chunk_text_str = enc.decode(chunk_tokens)
+            if chunk_text_str.strip():
+                chunks.append({
+                    "chunk_index": chunk_idx,
+                    "text": chunk_text_str,
+                    "token_count": len(chunk_tokens),
+                })
+                chunk_idx += 1
+            if end >= len(tokens):
+                break
+            start = end - CHUNK_OVERLAP
+    return chunks if chunks else [{"chunk_index": 0, "text": text, "token_count": len(enc.encode(text))}]
+
+
+# ---------------------------------------------------------------------------
+# Embedding
+# ---------------------------------------------------------------------------
+
+def embed_chunks(chunks: List[dict]) -> List[List[float]]:
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    texts = [c["text"] for c in chunks]
+    vectors = []
+    for i in range(0, len(texts), EMBED_BATCH):
+        batch = texts[i: i + EMBED_BATCH]
+        resp = client.embeddings.create(model="text-embedding-3-small", input=batch)
+        vectors.extend([e.embedding for e in resp.data])
+    return vectors
+
+
+# ---------------------------------------------------------------------------
+# Deterministic UUID5 for Qdrant point IDs
+# ---------------------------------------------------------------------------
+
+def point_uuid(document_id: str, chunk_index: int) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_OID, f"{document_id}:{chunk_index}"))
+
+
+# ---------------------------------------------------------------------------
+# DuckDB log helper
+# ---------------------------------------------------------------------------
+
+def duckdb_log(event_type: str, doc_id: str, title: str, folder_name: Optional[str],
+               tag_names: List[str], chunk_count: int, total_tokens: int, content_hash: str):
+    try:
+        db = get_duckdb()
+        db.execute("""
+            INSERT INTO document_facts
+              (id, document_id, event_type, title, folder, tag_names, chunk_count, token_count, content_hash, event_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (
+            str(uuid.uuid4()), doc_id, event_type, title,
+            folder_name, json.dumps(tag_names), chunk_count, total_tokens, content_hash,
+        ))
+        db.close()
+    except Exception as e:
+        print(f"[DuckDB log error] {e}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# JSONL governance receipt helper
+# ---------------------------------------------------------------------------
+
+def jsonl_log(payload: dict):
+    try:
+        with open(GOVERNANCE_JSONL, "a") as f:
+            f.write(json.dumps(payload) + "\n")
+    except Exception as e:
+        print(f"[JSONL log error] {e}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Pydantic models
+# ---------------------------------------------------------------------------
+
+class DocumentCreate(BaseModel):
+    title: str
+    content: str
+    folder_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    tag_ids: Optional[List[str]] = []
+
+
+class DocumentUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    folder_id: Optional[str] = None  # explicit None = clear folder
+    campaign_id: Optional[str] = None  # explicit None = clear campaign
+    tag_ids: Optional[List[str]] = None
+
+
+# ---------------------------------------------------------------------------
+# POST /api/knowledge/documents
+# ---------------------------------------------------------------------------
+
+@router.post("/api/knowledge/documents", status_code=201)
+def create_document(body: DocumentCreate):
+    title = (body.title or "").strip()
+    content = (body.content or "").strip()
+    tag_ids = body.tag_ids or []
+
+    if not title:
+        raise HTTPException(status_code=400, detail="Title cannot be blank")
+    if not content:
+        raise HTTPException(status_code=400, detail="Content cannot be blank")
+    if len(title) > 200:
+        raise HTTPException(status_code=400, detail="Title max 200 characters")
+    if len(tag_ids) > 3:
+        raise HTTPException(status_code=400, detail="Maximum 3 tags allowed")
+
+    content_hash = hashlib.sha256(content.encode()).hexdigest()
+
+    conn = get_conn()
+    doc_id = None
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Duplicate check
+        cur.execute("SELECT id FROM knowledge_documents WHERE content_hash = %s", (content_hash,))
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail="Duplicate content \u2014 this document already exists")
+
+        # Folder check
+        folder_name = None
+        if body.folder_id:
+            cur.execute("SELECT id, name FROM folders WHERE id = %s", (body.folder_id,))
+            folder_row = cur.fetchone()
+            if not folder_row:
+                raise HTTPException(status_code=400, detail="folder_id not found")
+            folder_name = folder_row["name"]
+
+        # Campaign check + mutual exclusivity
+        campaign_name = None
+        effective_folder_id = body.folder_id
+        effective_campaign_id = body.campaign_id
+        if body.campaign_id:
+            cur.execute("SELECT id, name FROM campaigns WHERE id = %s", (body.campaign_id,))
+            campaign_row = cur.fetchone()
+            if not campaign_row:
+                raise HTTPException(status_code=400, detail="campaign_id not found")
+            campaign_name = campaign_row["name"]
+            # Mutual exclusivity: campaign wins, clear folder
+            effective_folder_id = None
+            folder_name = None
+        elif body.folder_id:
+            effective_campaign_id = None
+
+        # Tag check
+        tag_names = []
+        for tid in tag_ids:
+            cur.execute("SELECT id, name FROM tags WHERE id = %s", (tid,))
+            tag_row = cur.fetchone()
+            if not tag_row:
+                raise HTTPException(status_code=400, detail=f"tag_id {tid} not found")
+            tag_names.append(tag_row["name"])
+
+        # Postgres insert
+        cur.execute("""
+            INSERT INTO knowledge_documents (title, content, content_hash, folder_id, campaign_id, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+            RETURNING id
+        """, (title, content, content_hash, effective_folder_id, effective_campaign_id))
+        doc_id = str(cur.fetchone()["id"])
+
+        # document_tags
+        for tid in tag_ids:
+            cur.execute(
+                "INSERT INTO document_tags (document_id, tag_id) VALUES (%s, %s)",
+                (doc_id, tid),
+            )
+
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+    # Chunk
+    chunks = chunk_text(content)
+    total_tokens = sum(c["token_count"] for c in chunks)
+
+    # Embed
+    try:
+        vectors = embed_chunks(chunks)
+    except Exception as e:
+        # Rollback Postgres
+        conn2 = get_conn()
+        try:
+            cur2 = conn2.cursor()
+            cur2.execute("DELETE FROM document_tags WHERE document_id = %s", (doc_id,))
+            cur2.execute("DELETE FROM knowledge_documents WHERE id = %s", (doc_id,))
+            conn2.commit()
+        finally:
+            conn2.close()
+        raise HTTPException(status_code=502, detail=f"Embedding error: {e}")
+
+    # Qdrant upsert
+    try:
+        qdrant = get_qdrant()
+        points = []
+        for chunk, vector in zip(chunks, vectors):
+            points.append(PointStruct(
+                id=point_uuid(doc_id, chunk["chunk_index"]),
+                vector=vector,
+                payload={
+                    "document_id": doc_id,
+                    "chunk_index": chunk["chunk_index"],
+                    "text": chunk["text"],
+                    "title": title,
+                },
+            ))
+        qdrant.upsert(collection_name=settings.QDRANT_COLLECTION, points=points)
+    except Exception as e:
+        # Rollback Postgres
+        conn3 = get_conn()
+        try:
+            cur3 = conn3.cursor()
+            cur3.execute("DELETE FROM document_tags WHERE document_id = %s", (doc_id,))
+            cur3.execute("DELETE FROM knowledge_documents WHERE id = %s", (doc_id,))
+            conn3.commit()
+        finally:
+            conn3.close()
+        raise HTTPException(status_code=502, detail=f"Qdrant error: {e}")
+
+    # DuckDB log (non-fatal)
+    duckdb_log("ingest", doc_id, title, folder_name, tag_names, len(chunks), total_tokens, content_hash)
+
+    # JSONL receipt (non-fatal)
+    jsonl_log({
+        "event": "document_ingest",
+        "document_id": doc_id,
+        "title": title,
+        "folder_id": body.folder_id,
+        "folder_name": folder_name,
+        "tag_ids": tag_ids,
+        "tag_names": tag_names,
+        "chunk_count": len(chunks),
+        "total_tokens": total_tokens,
+        "content_hash": content_hash,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    return {
+        "id": doc_id,
+        "title": title,
+        "folder_id": effective_folder_id,
+        "campaign_id": effective_campaign_id,
+        "tag_ids": tag_ids,
+        "chunk_count": len(chunks),
+        "total_tokens": total_tokens,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/knowledge/documents
+# ---------------------------------------------------------------------------
+
+@router.get("/api/knowledge/documents")
+def list_documents(
+    folder_id: Optional[str] = Query(None),
+    tag_id: Optional[str] = Query(None),
+    campaign_id: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    limit: int = Query(50, le=200),
+    offset: int = Query(0),
+):
+    conn = get_conn()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        where_clauses = ["1=1"]
+        params = []
+
+        if folder_id == "unfiled":
+            where_clauses.append("kd.folder_id IS NULL")
+        elif folder_id:
+            where_clauses.append("kd.folder_id = %s")
+            params.append(folder_id)
+        if campaign_id:
+            where_clauses.append("kd.campaign_id = %s")
+            params.append(campaign_id)
+        if tag_id:
+            where_clauses.append("EXISTS (SELECT 1 FROM document_tags dt2 WHERE dt2.document_id = kd.id AND dt2.tag_id = %s)")
+            params.append(tag_id)
+        if q:
+            where_clauses.append("kd.title ILIKE %s")
+            params.append(f"%{q}%")
+
+        where_sql = " AND ".join(where_clauses)
+        params.extend([limit, offset])
+
+        cur.execute(f"""
+            SELECT kd.id, kd.title, kd.folder_id, f.name AS folder_name,
+                   kd.campaign_id, c.name AS campaign_name,
+                   kd.created_at, kd.updated_at,
+                   COALESCE(
+                       json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color))
+                       FILTER (WHERE t.id IS NOT NULL), '[]'
+                   ) AS tags
+            FROM knowledge_documents kd
+            LEFT JOIN folders f ON f.id = kd.folder_id
+            LEFT JOIN campaigns c ON c.id = kd.campaign_id
+            LEFT JOIN document_tags dt ON dt.document_id = kd.id
+            LEFT JOIN tags t ON t.id = dt.tag_id
+            WHERE {where_sql}
+            GROUP BY kd.id, kd.title, kd.folder_id, f.name,
+                     kd.campaign_id, c.name,
+                     kd.created_at, kd.updated_at
+            ORDER BY kd.created_at DESC
+            LIMIT %s OFFSET %s
+        """, params)
+
+        rows = cur.fetchall()
+        cur.close()
+
+        # Chunk counts from DuckDB
+        doc_ids = [str(r["id"]) for r in rows]
+        chunk_counts = {}
+        if doc_ids:
+            try:
+                db = get_duckdb()
+                placeholders = ",".join("?" * len(doc_ids))
+                facts = db.execute(f"""
+                    SELECT document_id, chunk_count FROM document_facts
+                    WHERE document_id IN ({placeholders}) AND event_type = 'ingest'
+                    ORDER BY event_at DESC
+                """, doc_ids).fetchall()
+                db.close()
+                for doc_id, cc in facts:
+                    if doc_id not in chunk_counts and cc is not None:
+                        chunk_counts[doc_id] = cc
+            except Exception:
+                pass
+
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["chunk_count"] = chunk_counts.get(str(d["id"]), 0)
+            result.append(d)
+        return result
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Helpers shared by search and chat
+# ---------------------------------------------------------------------------
+
+def _snippet(content: str, max_chars: int = 300) -> str:
+    """Return first max_chars chars truncated at word boundary."""
+    if len(content) <= max_chars:
+        return content
+    truncated = content[:max_chars]
+    last_space = truncated.rfind(" ")
+    return truncated[:last_space] if last_space > 0 else truncated
+
+
+def _fetch_doc_tags(cur, doc_ids: List[str]) -> dict:
+    """Return {doc_id: [{id, name, color}]} for given doc_ids."""
+    if not doc_ids:
+        return {}
+    placeholders = ",".join(["%s"] * len(doc_ids))
+    cur.execute(f"""
+        SELECT dt.document_id, t.id, t.name, t.color
+        FROM document_tags dt
+        JOIN tags t ON t.id = dt.tag_id
+        WHERE dt.document_id IN ({placeholders})
+    """, doc_ids)
+    result = {}
+    for row in cur.fetchall():
+        did = str(row["document_id"])
+        result.setdefault(did, []).append({
+            "id": str(row["id"]),
+            "name": row["name"],
+            "color": row["color"],
+        })
+    return result
+
+
+def _duckdb_query_log(q: str, mode: str, doc_ids: List[str], count: int,
+                      latency_ms: int, tokens_consumed=None):
+    """Write to DuckDB query_log \u2014 non-fatal."""
+    try:
+        db = get_duckdb()
+        db.execute("""
+            INSERT INTO query_log (id, query_text, query_mode, documents_hit, result_count, latency_ms, tokens_consumed, executed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (
+            str(uuid.uuid4()), q, mode,
+            json.dumps(doc_ids), count, latency_ms, tokens_consumed,
+        ))
+        db.close()
+    except Exception as e:
+        print(f"[DuckDB query_log error] {e}", file=sys.stderr)
+
+
+def _embed_query(q: str) -> List[float]:
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    resp = client.embeddings.create(model="text-embedding-3-small", input=[q])
+    return resp.data[0].embedding
+
+
+# ---------------------------------------------------------------------------
+# GET /api/knowledge/documents/search  (must be before /{doc_id})
+# ---------------------------------------------------------------------------
+
+@router.get("/api/knowledge/documents/search")
+def search_documents(
+    q: str = Query(...),
+    mode: str = Query(..., pattern="^(keyword|wildcard|semantic)$"),
+    folder_id: Optional[str] = Query(None),
+    tag_id: Optional[str] = Query(None),
+    campaign_id: Optional[str] = Query(None),
+    limit: int = Query(20, le=100),
+    offset: int = Query(0),
+):
+    if len(q) > 500:
+        raise HTTPException(status_code=400, detail="Search query max 500 characters")
+    t0 = time.monotonic()
+    conn = get_conn()
+    results = []
+    doc_ids_hit = []
+
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        if mode == "keyword":
+            cur.execute("""
+                SELECT kd.id, kd.title, kd.content, kd.folder_id, f.name AS folder_name,
+                       kd.campaign_id, c.name AS campaign_name,
+                       kd.created_at, kd.updated_at,
+                       ts_rank(kd.search_vector, plainto_tsquery('english', %s)) AS score
+                FROM knowledge_documents kd
+                LEFT JOIN folders f ON f.id = kd.folder_id
+                LEFT JOIN campaigns c ON c.id = kd.campaign_id
+                WHERE kd.search_vector @@ plainto_tsquery('english', %s)
+                  {folder_filter}
+                  {campaign_filter}
+                  {tag_filter}
+                ORDER BY score DESC
+                LIMIT %s OFFSET %s
+            """.format(
+                folder_filter="AND kd.folder_id = %s" if folder_id else "",
+                campaign_filter="AND kd.campaign_id = %s" if campaign_id else "",
+                tag_filter="AND EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = kd.id AND dt.tag_id = %s)" if tag_id else "",
+            ), [p for p in [q, q, folder_id, campaign_id, tag_id, limit, offset] if p is not None])
+
+            rows = cur.fetchall()
+
+            if not rows:
+                cur.execute("""
+                    SELECT kd.id, kd.title, kd.content, kd.folder_id, f.name AS folder_name,
+                           kd.campaign_id, c.name AS campaign_name,
+                           kd.created_at, kd.updated_at, NULL::float AS score
+                    FROM knowledge_documents kd
+                    LEFT JOIN folders f ON f.id = kd.folder_id
+                    LEFT JOIN campaigns c ON c.id = kd.campaign_id
+                    WHERE (kd.title ILIKE %s OR kd.content ILIKE %s)
+                      {folder_filter}
+                      {campaign_filter}
+                      {tag_filter}
+                    LIMIT %s OFFSET %s
+                """.format(
+                    folder_filter="AND kd.folder_id = %s" if folder_id else "",
+                    campaign_filter="AND kd.campaign_id = %s" if campaign_id else "",
+                    tag_filter="AND EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = kd.id AND dt.tag_id = %s)" if tag_id else "",
+                ), [p for p in [f"%{q}%", f"%{q}%", folder_id, campaign_id, tag_id, limit, offset] if p is not None])
+                rows = cur.fetchall()
+
+            doc_ids_hit = [str(r["id"]) for r in rows]
+            tag_map = _fetch_doc_tags(cur, doc_ids_hit)
+            for r in rows:
+                did = str(r["id"])
+                results.append({
+                    "id": did,
+                    "title": r["title"],
+                    "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
+                    "folder_name": r["folder_name"],
+                    "campaign_id": str(r["campaign_id"]) if r.get("campaign_id") else None,
+                    "campaign_name": r.get("campaign_name"),
+                    "tags": tag_map.get(did, []),
+                    "snippet": _snippet(r["content"] or ""),
+                    "score": float(r["score"]) if r["score"] is not None else None,
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+                })
+
+        elif mode == "wildcard":
+            stem = re.sub(r'[*%]+$', '', q).strip()
+            if not stem:
+                raise HTTPException(status_code=400, detail="Wildcard query has no stem after stripping wildcards")
+
+            cur.execute("""
+                SELECT kd.id, kd.title, kd.content, kd.folder_id, f.name AS folder_name,
+                       kd.campaign_id, c.name AS campaign_name,
+                       kd.created_at, kd.updated_at,
+                       ts_rank(kd.search_vector, to_tsquery('english', %s)) AS score
+                FROM knowledge_documents kd
+                LEFT JOIN folders f ON f.id = kd.folder_id
+                LEFT JOIN campaigns c ON c.id = kd.campaign_id
+                WHERE kd.search_vector @@ to_tsquery('english', %s)
+                  {folder_filter}
+                  {campaign_filter}
+                  {tag_filter}
+                ORDER BY score DESC
+                LIMIT %s OFFSET %s
+            """.format(
+                folder_filter="AND kd.folder_id = %s" if folder_id else "",
+                campaign_filter="AND kd.campaign_id = %s" if campaign_id else "",
+                tag_filter="AND EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = kd.id AND dt.tag_id = %s)" if tag_id else "",
+            ), [p for p in [stem + ":*", stem + ":*", folder_id, campaign_id, tag_id, limit, offset] if p is not None])
+
+            rows = cur.fetchall()
+
+            if not rows:
+                cur.execute("""
+                    SELECT kd.id, kd.title, kd.content, kd.folder_id, f.name AS folder_name,
+                           kd.campaign_id, c.name AS campaign_name,
+                           kd.created_at, kd.updated_at, NULL::float AS score
+                    FROM knowledge_documents kd
+                    LEFT JOIN folders f ON f.id = kd.folder_id
+                    LEFT JOIN campaigns c ON c.id = kd.campaign_id
+                    WHERE (kd.title ILIKE %s OR kd.content ILIKE %s)
+                      {folder_filter}
+                      {campaign_filter}
+                      {tag_filter}
+                    LIMIT %s OFFSET %s
+                """.format(
+                    folder_filter="AND kd.folder_id = %s" if folder_id else "",
+                    campaign_filter="AND kd.campaign_id = %s" if campaign_id else "",
+                    tag_filter="AND EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = kd.id AND dt.tag_id = %s)" if tag_id else "",
+                ), [p for p in [f"%{stem}%", f"%{stem}%", folder_id, campaign_id, tag_id, limit, offset] if p is not None])
+                rows = cur.fetchall()
+
+            doc_ids_hit = [str(r["id"]) for r in rows]
+            tag_map = _fetch_doc_tags(cur, doc_ids_hit)
+            for r in rows:
+                did = str(r["id"])
+                results.append({
+                    "id": did,
+                    "title": r["title"],
+                    "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
+                    "folder_name": r["folder_name"],
+                    "campaign_id": str(r["campaign_id"]) if r.get("campaign_id") else None,
+                    "campaign_name": r.get("campaign_name"),
+                    "tags": tag_map.get(did, []),
+                    "snippet": _snippet(r["content"] or ""),
+                    "score": float(r["score"]) if r["score"] is not None else None,
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+                })
+
+        elif mode == "semantic":
+            try:
+                vector = _embed_query(q)
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"Embedding error: {e}")
+
+            qdrant = get_qdrant()
+            try:
+                resp = qdrant.query_points(
+                    collection_name=settings.QDRANT_COLLECTION,
+                    query=vector,
+                    limit=20,
+                    with_payload=True,
+                )
+                hits = resp.points
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"Qdrant search error: {e}")
+
+            seen = {}
+            for hit in hits:
+                did = hit.payload.get("document_id")
+                if did and did not in seen:
+                    seen[did] = hit.score
+
+            ordered_ids = list(seen.keys())
+            if ordered_ids:
+                placeholders = ",".join(["%s"] * len(ordered_ids))
+                cur.execute(f"""
+                    SELECT kd.id, kd.title, kd.content, kd.folder_id, f.name AS folder_name,
+                           kd.campaign_id, c.name AS campaign_name,
+                           kd.created_at, kd.updated_at
+                    FROM knowledge_documents kd
+                    LEFT JOIN folders f ON f.id = kd.folder_id
+                    LEFT JOIN campaigns c ON c.id = kd.campaign_id
+                    WHERE kd.id IN ({placeholders})
+                """, ordered_ids)
+                pg_rows = {str(r["id"]): r for r in cur.fetchall()}
+
+                filtered_ids = []
+                for did in ordered_ids:
+                    if did not in pg_rows:
+                        continue
+                    r = pg_rows[did]
+                    if folder_id and str(r["folder_id"] or "") != folder_id:
+                        continue
+                    if campaign_id and str(r.get("campaign_id") or "") != campaign_id:
+                        continue
+                    if tag_id:
+                        cur.execute(
+                            "SELECT 1 FROM document_tags WHERE document_id = %s AND tag_id = %s",
+                            (did, tag_id),
+                        )
+                        if not cur.fetchone():
+                            continue
+                    filtered_ids.append(did)
+
+                filtered_ids = filtered_ids[offset: offset + limit]
+                doc_ids_hit = filtered_ids
+
+                tag_map = _fetch_doc_tags(cur, filtered_ids)
+                for did in filtered_ids:
+                    r = pg_rows[did]
+                    results.append({
+                        "id": did,
+                        "title": r["title"],
+                        "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
+                        "folder_name": r["folder_name"],
+                        "campaign_id": str(r["campaign_id"]) if r.get("campaign_id") else None,
+                        "campaign_name": r.get("campaign_name"),
+                        "tags": tag_map.get(did, []),
+                        "snippet": _snippet(r["content"] or ""),
+                        "score": seen[did],
+                        "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                        "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+                    })
+
+        cur.close()
+    finally:
+        conn.close()
+
+    latency_ms = int((time.monotonic() - t0) * 1000)
+    _duckdb_query_log(q, mode, doc_ids_hit, len(results), latency_ms)
+
+    return {
+        "mode": mode,
+        "query": q,
+        "results": results,
+        "result_count": len(results),
+        "latency_ms": latency_ms,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/knowledge/documents/:id
+# ---------------------------------------------------------------------------
+
+@router.get("/api/knowledge/documents/{doc_id}")
+def get_document(doc_id: str):
+    conn = get_conn()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT kd.id, kd.title, kd.content, kd.folder_id, f.name AS folder_name,
+                   kd.campaign_id, c.name AS campaign_name,
+                   kd.created_at, kd.updated_at,
+                   COALESCE(
+                       json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color))
+                       FILTER (WHERE t.id IS NOT NULL), '[]'
+                   ) AS tags
+            FROM knowledge_documents kd
+            LEFT JOIN folders f ON f.id = kd.folder_id
+            LEFT JOIN campaigns c ON c.id = kd.campaign_id
+            LEFT JOIN document_tags dt ON dt.document_id = kd.id
+            LEFT JOIN tags t ON t.id = dt.tag_id
+            WHERE kd.id = %s
+            GROUP BY kd.id, kd.title, kd.content, kd.folder_id, f.name,
+                     kd.campaign_id, c.name, kd.created_at, kd.updated_at
+        """, (doc_id,))
+        row = cur.fetchone()
+        cur.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Document not found")
+        d = dict(row)
+        # chunk count from DuckDB
+        try:
+            db = get_duckdb()
+            fact = db.execute(
+                "SELECT chunk_count FROM document_facts WHERE document_id = ? AND event_type = 'ingest' ORDER BY event_at DESC LIMIT 1",
+                (doc_id,)
+            ).fetchone()
+            db.close()
+            d["chunk_count"] = fact[0] if fact and fact[0] is not None else 0
+        except Exception:
+            d["chunk_count"] = 0
+
+        # Log access to document_access_log (non-fatal)
+        try:
+            db2 = get_duckdb()
+            db2.execute("""
+                INSERT INTO document_access_log (id, document_id, query_text, relevance_score, accessed_at)
+                VALUES (?, ?, 'direct_view', NULL, CURRENT_TIMESTAMP)
+            """, (str(uuid.uuid4()), doc_id))
+            db2.close()
+        except Exception as e:
+            print(f"[access_log error] {e}", file=sys.stderr)
+
+        return d
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/knowledge/documents/:id
+# ---------------------------------------------------------------------------
+
+@router.delete("/api/knowledge/documents/{doc_id}", status_code=204)
+def delete_document(doc_id: str):
+    conn = get_conn()
+    title = None
+    content_hash = None
+    folder_name = None
+    tag_names_list = []
+
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Capture full document state BEFORE deletion (folder + tags included)
+        cur.execute("""
+            SELECT kd.id, kd.title, kd.content_hash, f.name AS folder_name
+            FROM knowledge_documents kd
+            LEFT JOIN folders f ON f.id = kd.folder_id
+            WHERE kd.id = %s
+        """, (doc_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Document not found")
+        title = row["title"]
+        content_hash = row["content_hash"]
+        folder_name = row["folder_name"]
+
+        # Capture tag names before deletion
+        cur.execute("""
+            SELECT t.name FROM tags t
+            JOIN document_tags dt ON dt.tag_id = t.id
+            WHERE dt.document_id = %s
+        """, (doc_id,))
+        tag_names_list = [r["name"] for r in cur.fetchall()]
+
+        # [1] Delete Qdrant points by filter
+        try:
+            qdrant = get_qdrant()
+            qdrant.delete(
+                collection_name=settings.QDRANT_COLLECTION,
+                points_selector=Filter(
+                    must=[FieldCondition(key="document_id", match=MatchValue(value=doc_id))]
+                ),
+            )
+            # [2] Verify deletion \u2014 scroll must return 0 points
+            remaining_points, _ = qdrant.scroll(
+                collection_name=settings.QDRANT_COLLECTION,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="document_id", match=MatchValue(value=doc_id))]
+                ),
+                limit=10,
+                with_payload=False,
+                with_vectors=False,
+            )
+            if remaining_points:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Qdrant deletion incomplete \u2014 {len(remaining_points)} points remaining"
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[Qdrant delete error] {e}", file=sys.stderr)
+
+        # [3] Delete document_tags
+        cur.execute("DELETE FROM document_tags WHERE document_id = %s", (doc_id,))
+        # [4] Delete knowledge_documents
+        cur.execute("DELETE FROM knowledge_documents WHERE id = %s", (doc_id,))
+        conn.commit()
+        cur.close()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+    # [5] DuckDB log \u2014 event_type 'deletion' (non-fatal)
+    token_count = 0
+    try:
+        db_t = get_duckdb()
+        fact = db_t.execute(
+            "SELECT token_count FROM document_facts WHERE document_id = ? ORDER BY event_at DESC LIMIT 1",
+            (doc_id,)
+        ).fetchone()
+        db_t.close()
+        token_count = fact[0] if fact and fact[0] is not None else 0
+    except Exception:
+        pass
+
+    # [6] access_log NOT deleted \u2014 preserved for audit
+    duckdb_log("deletion", doc_id, title, folder_name, tag_names_list, 0, token_count, content_hash)
+
+    # [7] JSONL governance receipt
+    jsonl_log({
+        "event": "document_deletion",
+        "document_id": doc_id,
+        "title": title,
+        "folder_name": folder_name,
+        "tag_names": tag_names_list,
+        "content_hash": content_hash,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+# ---------------------------------------------------------------------------
+# GET /api/knowledge/documents/:id/dependencies
+# ---------------------------------------------------------------------------
+
+@router.get("/api/knowledge/documents/{doc_id}/dependencies")
+def get_document_dependencies(doc_id: str):
+    """Return the full cross-store footprint of a document \u2014 read-only."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT kd.id, kd.title, f.name AS folder_name,
+                   COUNT(dt.tag_id) AS tag_count
+            FROM knowledge_documents kd
+            LEFT JOIN folders f ON f.id = kd.folder_id
+            LEFT JOIN document_tags dt ON dt.document_id = kd.id
+            WHERE kd.id = %s
+            GROUP BY kd.id, kd.title, f.name
+        """, (doc_id,))
+        row = cur.fetchone()
+        cur.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="Document not found")
+    finally:
+        conn.close()
+
+    # Qdrant point count
+    point_count = 0
+    try:
+        qdrant = get_qdrant()
+        pts, _ = qdrant.scroll(
+            collection_name=settings.QDRANT_COLLECTION,
+            scroll_filter=Filter(
+                must=[FieldCondition(key="document_id", match=MatchValue(value=doc_id))]
+            ),
+            limit=200,
+            with_payload=False,
+            with_vectors=False,
+        )
+        point_count = len(pts)
+    except Exception as e:
+        print(f"[dependencies qdrant error] {e}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail=f"Qdrant scroll failed: {e}")
+
+    # DuckDB access_log count
+    access_log_count = 0
+    try:
+        db = get_duckdb()
+        result = db.execute(
+            "SELECT COUNT(*) FROM document_access_log WHERE document_id = ?",
+            (doc_id,)
+        ).fetchone()
+        db.close()
+        access_log_count = result[0] if result else 0
+    except Exception as e:
+        print(f"[dependencies duckdb error] {e}", file=sys.stderr)
+
+    return {
+        "document_id": doc_id,
+        "title": row["title"],
+        "postgres": {
+            "tag_count": int(row["tag_count"]),
+            "folder_name": row["folder_name"],
+        },
+        "qdrant": {
+            "point_count": point_count,
+        },
+        "duckdb": {
+            "access_log_count": access_log_count,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/knowledge/documents/:id
+# ---------------------------------------------------------------------------
+
+@router.put("/api/knowledge/documents/{doc_id}")
+def update_document(doc_id: str, body: DocumentUpdate):
+    conn = get_conn()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT kd.id, kd.title, kd.content, kd.content_hash, kd.folder_id, kd.campaign_id
+            FROM knowledge_documents kd WHERE kd.id = %s
+        """, (doc_id,))
+        existing = cur.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        new_title = body.title.strip() if body.title is not None else existing["title"]
+        new_content = body.content.strip() if body.content is not None else existing["content"]
+        # folder_id: None in body means "clear" only if explicitly passed; use sentinel
+        new_folder_id = body.folder_id if body.folder_id is not None else existing["folder_id"]
+        # If body explicitly sets folder_id to None (JSON null), clear it
+        # Pydantic passes None for missing and for null \u2014 we rely on the field being present
+        # We handle this by checking body.model_fields_set
+        if "folder_id" in (body.model_fields_set or set()):
+            new_folder_id = body.folder_id  # could be None (clear) or a uuid
+
+        # campaign_id handling (same sentinel pattern as folder_id)
+        new_campaign_id = existing.get("campaign_id")
+        if "campaign_id" in (body.model_fields_set or set()):
+            new_campaign_id = body.campaign_id
+
+        # Mutual exclusivity: if campaign is being set, clear folder (and vice versa)
+        if new_campaign_id and "campaign_id" in (body.model_fields_set or set()):
+            new_folder_id = None
+        elif new_folder_id and "folder_id" in (body.model_fields_set or set()):
+            new_campaign_id = None
+
+        tag_ids = body.tag_ids
+
+        if not new_title:
+            raise HTTPException(status_code=400, detail="Title cannot be blank")
+        if len(new_title) > 200:
+            raise HTTPException(status_code=400, detail="Title max 200 characters")
+        if not new_content:
+            raise HTTPException(status_code=400, detail="Content cannot be blank")
+        if tag_ids is not None and len(tag_ids) > 3:
+            raise HTTPException(status_code=400, detail="Maximum 3 tags allowed")
+
+        # Folder check
+        folder_name = None
+        if new_folder_id:
+            cur.execute("SELECT id, name FROM folders WHERE id = %s", (new_folder_id,))
+            folder_row = cur.fetchone()
+            if not folder_row:
+                raise HTTPException(status_code=400, detail="folder_id not found")
+            folder_name = folder_row["name"]
+
+        # Campaign check
+        campaign_name = None
+        if new_campaign_id:
+            cur.execute("SELECT id, name FROM campaigns WHERE id = %s", (new_campaign_id,))
+            campaign_row = cur.fetchone()
+            if not campaign_row:
+                raise HTTPException(status_code=400, detail="campaign_id not found")
+            campaign_name = campaign_row["name"]
+
+        # Tag check
+        new_tag_names = []
+        if tag_ids is not None:
+            for tid in tag_ids:
+                cur.execute("SELECT id, name FROM tags WHERE id = %s", (tid,))
+                tag_row = cur.fetchone()
+                if not tag_row:
+                    raise HTTPException(status_code=400, detail=f"tag_id {tid} not found")
+                new_tag_names.append(tag_row["name"])
+
+        content_changed = new_content != existing["content"]
+        new_hash = existing["content_hash"]
+        chunks = []
+        total_tokens = 0
+        vectors = []
+
+        if content_changed:
+            new_hash = hashlib.sha256(new_content.encode()).hexdigest()
+            # Duplicate check (exclude self)
+            cur.execute(
+                "SELECT id FROM knowledge_documents WHERE content_hash = %s AND id != %s",
+                (new_hash, doc_id),
+            )
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Duplicate content \u2014 this document already exists")
+
+            chunks = chunk_text(new_content)
+            total_tokens = sum(c["token_count"] for c in chunks)
+
+            # Embed before DB changes
+            try:
+                vectors = embed_chunks(chunks)
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"Embedding error: {e}")
+
+        # Update Postgres
+        cur.execute("""
+            UPDATE knowledge_documents
+            SET title = %s, content = %s, content_hash = %s, folder_id = %s, campaign_id = %s, updated_at = NOW()
+            WHERE id = %s
+        """, (new_title, new_content, new_hash, new_folder_id, new_campaign_id, doc_id))
+
+        if tag_ids is not None:
+            cur.execute("DELETE FROM document_tags WHERE document_id = %s", (doc_id,))
+            for tid in tag_ids:
+                cur.execute(
+                    "INSERT INTO document_tags (document_id, tag_id) VALUES (%s, %s)",
+                    (doc_id, tid),
+                )
+
+        conn.commit()
+
+        if content_changed:
+            # Delete old Qdrant points
+            try:
+                qdrant = get_qdrant()
+                qdrant.delete(
+                    collection_name=settings.QDRANT_COLLECTION,
+                    points_selector=Filter(
+                        must=[FieldCondition(key="document_id", match=MatchValue(value=doc_id))]
+                    ),
+                )
+                # Upsert new points
+                points = []
+                for chunk, vector in zip(chunks, vectors):
+                    points.append(PointStruct(
+                        id=point_uuid(doc_id, chunk["chunk_index"]),
+                        vector=vector,
+                        payload={
+                            "document_id": doc_id,
+                            "chunk_index": chunk["chunk_index"],
+                            "text": chunk["text"],
+                            "title": new_title,
+                        },
+                    ))
+                qdrant.upsert(collection_name=settings.QDRANT_COLLECTION, points=points)
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"Qdrant error: {e}")
+
+        cur.close()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+    # DuckDB log (non-fatal)
+    final_tag_names = new_tag_names if tag_ids is not None else []
+    duckdb_log("update", doc_id, new_title, folder_name, final_tag_names,
+               len(chunks), total_tokens, new_hash)
+
+    # JSONL receipt
+    jsonl_log({
+        "event": "document_update",
+        "document_id": doc_id,
+        "title": new_title,
+        "folder_id": new_folder_id,
+        "folder_name": folder_name,
+        "tag_ids": tag_ids or [],
+        "tag_names": final_tag_names,
+        "content_changed": content_changed,
+        "chunk_count": len(chunks),
+        "total_tokens": total_tokens,
+        "content_hash": new_hash,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    return get_document(doc_id)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/knowledge/stats
+# ---------------------------------------------------------------------------
+
+@router.get("/api/knowledge/stats")
+def knowledge_stats():
+    conn = get_conn()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT COUNT(*) AS document_count,
+                   COALESCE(SUM(token_count), 0) AS total_tokens,
+                   MIN(created_at) AS oldest_document,
+                   MAX(created_at) AS newest_document
+            FROM knowledge_documents
+        """)
+        row = cur.fetchone()
+        cur.close()
+    finally:
+        conn.close()
+
+    # Qdrant point count
+    qdrant_point_count = 0
+    try:
+        qdrant = get_qdrant()
+        info = qdrant.get_collection(settings.QDRANT_COLLECTION)
+        qdrant_point_count = info.points_count or 0
+    except Exception as e:
+        print(f"[Qdrant stats error] {e}", file=sys.stderr)
+
+    return {
+        "document_count": row["document_count"],
+        "total_tokens": row["total_tokens"],
+        "oldest_document": row["oldest_document"].isoformat() if row["oldest_document"] else None,
+        "newest_document": row["newest_document"].isoformat() if row["newest_document"] else None,
+        "qdrant_point_count": qdrant_point_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/knowledge/history
+# ---------------------------------------------------------------------------
+
+@router.get("/api/knowledge/history")
+def knowledge_history(
+    limit: int = Query(20, le=100),
+    offset: int = Query(0),
+    document_id: Optional[str] = Query(None),
+):
+    try:
+        db = get_duckdb()
+        where = "WHERE 1=1"
+        params = []
+        if document_id:
+            where += " AND document_id = ?"
+            params.append(document_id)
+
+        count_row = db.execute(f"SELECT COUNT(*) FROM document_access_log {where}", params).fetchone()
+        total = count_row[0] if count_row else 0
+
+        params_page = params + [limit, offset]
+        rows = db.execute(f"""
+            SELECT id, document_id, query_text, relevance_score, accessed_at
+            FROM document_access_log
+            {where}
+            ORDER BY accessed_at DESC
+            LIMIT ? OFFSET ?
+        """, params_page).fetchall()
+        db.close()
+    except Exception as e:
+        print(f"[DuckDB history error] {e}", file=sys.stderr)
+        return {"entries": [], "total": 0}
+
+    # Resolve document titles from Postgres
+    doc_ids = list({r[1] for r in rows})
+    titles = {}
+    if doc_ids:
+        conn = get_conn()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            placeholders = ",".join(["%s"] * len(doc_ids))
+            cur.execute(f"SELECT id, title FROM knowledge_documents WHERE id IN ({placeholders})", doc_ids)
+            for r in cur.fetchall():
+                titles[str(r["id"])] = r["title"]
+            cur.close()
+        finally:
+            conn.close()
+
+    entries = []
+    for r in rows:
+        entries.append({
+            "id": r[0],
+            "document_id": r[1],
+            "document_title": titles.get(r[1]),
+            "query_text": r[2],
+            "relevance_score": r[3],
+            "accessed_at": r[4].isoformat() if r[4] else None,
+        })
+
+    return {"entries": entries, "total": total}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/knowledge/history/top
+# ---------------------------------------------------------------------------
+
+@router.get("/api/knowledge/history/top")
+def knowledge_history_top(limit: int = Query(10, le=50)):
+    try:
+        db = get_duckdb()
+        rows = db.execute("""
+            SELECT document_id, COUNT(*) AS retrieval_count, MAX(accessed_at) AS last_accessed
+            FROM document_access_log
+            GROUP BY document_id
+            ORDER BY retrieval_count DESC
+            LIMIT ?
+        """, [limit]).fetchall()
+        db.close()
+    except Exception as e:
+        print(f"[DuckDB history/top error] {e}", file=sys.stderr)
+        return {"entries": []}
+
+    doc_ids = [r[0] for r in rows]
+    titles = {}
+    if doc_ids:
+        conn = get_conn()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            placeholders = ",".join(["%s"] * len(doc_ids))
+            cur.execute(f"SELECT id, title FROM knowledge_documents WHERE id IN ({placeholders})", doc_ids)
+            for r in cur.fetchall():
+                titles[str(r["id"])] = r["title"]
+            cur.close()
+        finally:
+            conn.close()
+
+    entries = []
+    for r in rows:
+        entries.append({
+            "document_id": r[0],
+            "document_title": titles.get(r[0]),
+            "retrieval_count": r[1],
+            "last_accessed": r[2].isoformat() if r[2] else None,
+        })
+
+    return {"entries": entries}
+
+
+
+# ---------------------------------------------------------------------------
+# GET /api/knowledge/history/recent  (deduplicated, most-recent-first)
+# ---------------------------------------------------------------------------
+
+@router.get("/api/knowledge/history/recent")
+def knowledge_history_recent(
+    limit: int = Query(50, le=200),
+    offset: int = Query(0),
+):
+    """Deduplicated document access history \u2014 each doc appears once at its most recent access time."""
+    try:
+        db = get_duckdb()
+        count_row = db.execute(
+            "SELECT COUNT(DISTINCT document_id) FROM document_access_log"
+        ).fetchone()
+        total = count_row[0] if count_row else 0
+
+        rows = db.execute("""
+            SELECT document_id, MAX(accessed_at) AS last_accessed
+            FROM document_access_log
+            GROUP BY document_id
+            ORDER BY last_accessed DESC
+            LIMIT ? OFFSET ?
+        """, [limit, offset]).fetchall()
+        db.close()
+    except Exception as e:
+        print(f"[DuckDB history/recent error] {e}", file=sys.stderr)
+        return {"entries": [], "total": 0}
+
+    doc_ids = [r[0] for r in rows]
+    titles = {}
+    if doc_ids:
+        conn = get_conn()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            placeholders = ",".join(["%s"] * len(doc_ids))
+            cur.execute(f"SELECT id, title FROM knowledge_documents WHERE id IN ({placeholders})", doc_ids)
+            for r in cur.fetchall():
+                titles[str(r["id"])] = r["title"]
+            cur.close()
+        finally:
+            conn.close()
+
+    entries = []
+    for r in rows:
+        entries.append({
+            "document_id": r[0],
+            "document_title": titles.get(r[0]),
+            "last_accessed": r[1].isoformat() if r[1] else None,
+        })
+
+    return {"entries": entries, "total": total}
