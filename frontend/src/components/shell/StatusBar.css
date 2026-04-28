@@ -1,0 +1,33 @@
+.is1-statusbar {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 16px;
+  background: #F2EBE0;
+  border-top: 1px solid #E8E0D2;
+  flex-shrink: 0;
+  gap: 8px;
+  z-index: 100;
+}
+
+.is1-statusbar-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: #6B6B6B;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.is1-statusbar-item:hover {
+  color: #1F1F1F;
+}
+
+.is1-statusbar-sep {
+  width: 1px;
+  height: 12px;
+  background: #E8E0D2;
+  flex-shrink: 0;
+}

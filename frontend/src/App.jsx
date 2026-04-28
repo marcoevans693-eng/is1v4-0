@@ -1,92 +1,89 @@
-import React from 'react'
-import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import {
-  Search, MessageCircle, FileText, Folder, FilePlus,
-  History, Rocket, BookOpen, ScrollText
-} from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { ToastProvider } from './components/shared/Toast'
 import ErrorBoundary from './components/shared/ErrorBoundary'
-import IngestPanel from './components/ingest/IngestPanel'
+
+// Shell components
+import TopBar from './components/shell/TopBar'
+import SlimRail from './components/shell/SlimRail'
+import StatusBar from './components/shell/StatusBar'
+import CommandPalette from './components/shell/CommandPalette'
+
+// Module components
 import ChatView from './components/chat/ChatView'
+import IngestPanel from './components/ingest/IngestPanel'
 import KnowledgeExplorer from './components/knowledge/KnowledgeExplorer'
 import KnowledgeDocDetail from './components/knowledge/KnowledgeDocDetail'
 import FoldersView from './components/folders/FoldersView'
 import QueryHistoryView from './components/queries/QueryHistoryView'
 import ObservabilityDashboard from './components/observability/ObservabilityDashboard'
-import './index.css'
-import './App.css'
 import CampaignsView from './components/campaigns/CampaignsView'
-import ModuleBar from './components/moduleBar/ModuleBar'
-import ThinkRouterLayout from './components/thinkrouter/ThinkRouterLayout'
-import ComingSoon from './components/shared/ComingSoon'
 import SpecsView from './components/specs/SpecsView'
+import ThinkRouterLayout from './components/thinkrouter/ThinkRouterLayout'
 import UsageDashboard from './components/thinkrouter/UsageDashboard'
+import ComingSoon from './components/shared/ComingSoon'
 
-const MODULE_ROUTES = ['/thinkrouter', '/harvester', '/thinkrouter/usage']
+import './App.css'
 
 function AppShell() {
-  const location = useLocation()
-  const isModuleRoute = MODULE_ROUTES.some(r => location.pathname.startsWith(r))
+  const [cmdOpen, setCmdOpen] = useState(false)
+
+  // Global ⌘K / Ctrl+K handler
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setCmdOpen(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   return (
-    <div className="app-layout">
-      <ModuleBar />
-      <div className="app-body">
-        {!isModuleRoute && (
-          <nav className="sidebar">
-            <div className="sidebar-brand">IS1v3</div>
-            <NavLink to="/knowledge?tab=Search" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-              <Search size={15} /> Search
-            </NavLink>
-            <NavLink to="/" end className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-              <MessageCircle size={15} /> Chat
-            </NavLink>
-            <NavLink to="/knowledge?tab=All+Docs" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-              <FileText size={15} /> All Documents
-            </NavLink>
-            <NavLink to="/folders" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-              <Folder size={15} /> Folders
-            </NavLink>
-            <NavLink to="/ingest" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-              <FilePlus size={15} /> Ingest
-            </NavLink>
-            <NavLink to="/queries" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-              <History size={15} /> Query History
-            </NavLink>
-            <div className="nav-divider" />
-            <NavLink to="/campaigns" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-              <Rocket size={15} /> Campaigns
-            </NavLink>
-            <NavLink to="/knowledge" end className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-              <BookOpen size={15} /> Knowledge
-            </NavLink>
-            <NavLink to="/specs" className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-              <ScrollText size={15} /> Specs
-            </NavLink>
-          </nav>
-        )}
-        {isModuleRoute ? (
-          <Routes>
-            <Route path="/thinkrouter/usage" element={<UsageDashboard />} />
-            <Route path="/thinkrouter/*" element={<ThinkRouterLayout />} />
-            <Route path="/harvester" element={<ComingSoon moduleName="SiteHarvester1" />} />
-          </Routes>
-        ) : (
-          <main className="main-content">
+    <div className="is1-shell">
+      <TopBar onCommandPalette={() => setCmdOpen(true)} />
+
+      <div className="is1-shell-body">
+        <SlimRail />
+
+        <main className="is1-shell-canvas">
+          <ErrorBoundary>
             <Routes>
+              {/* Chat */}
               <Route path="/" element={<ChatView />} />
-              <Route path="/ingest" element={<IngestPanel />} />
+
+              {/* Knowledge cluster */}
               <Route path="/knowledge" element={<ErrorBoundary><KnowledgeExplorer /></ErrorBoundary>} />
               <Route path="/doc/:id" element={<KnowledgeDocDetail />} />
               <Route path="/folders" element={<ErrorBoundary><FoldersView /></ErrorBoundary>} />
+              <Route path="/ingest" element={<IngestPanel />} />
               <Route path="/queries" element={<ErrorBoundary><QueryHistoryView /></ErrorBoundary>} />
               <Route path="/observability" element={<ErrorBoundary><ObservabilityDashboard /></ErrorBoundary>} />
               <Route path="/campaigns" element={<ErrorBoundary><CampaignsView /></ErrorBoundary>} />
+
+              {/* Specs */}
               <Route path="/specs" element={<ErrorBoundary><SpecsView /></ErrorBoundary>} />
+
+              {/* Placeholder modules — Phase 4A stubs */}
+              <Route path="/tasks" element={<ComingSoon moduleName="Tasks" />} />
+              <Route path="/events" element={<ComingSoon moduleName="Events" />} />
+              <Route path="/capaproxy" element={<ComingSoon moduleName="CapaProxy" />} />
+
+              {/* ThinkRouter — temporary, retires Phase 4B */}
+              <Route path="/thinkrouter/usage" element={<UsageDashboard />} />
+              <Route path="/thinkrouter/*" element={<ThinkRouterLayout />} />
             </Routes>
-          </main>
-        )}
+          </ErrorBoundary>
+        </main>
       </div>
+
+      <StatusBar />
+
+      <CommandPalette
+        open={cmdOpen}
+        onClose={() => setCmdOpen(false)}
+      />
     </div>
   )
 }
