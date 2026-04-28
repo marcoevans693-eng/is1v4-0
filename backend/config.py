@@ -43,5 +43,8 @@ class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
 
+    # Caching (Phase 2)
+    caching_enabled: bool = os.getenv("CACHING_ENABLED", "true").lower() in ("true", "1", "yes")
+
 
 settings = Settings()

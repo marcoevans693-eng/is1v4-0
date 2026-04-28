@@ -30,6 +30,12 @@ import anthropic
 import google.generativeai as genai
 
 from backend.config import settings as _settings
+from backend.services.caching import (
+    build_anthropic_system_with_cache,
+    extract_anthropic_cache_metrics,
+    extract_openai_cache_metrics,
+    extract_gemini_cache_metrics,
+)
 from backend.thinkrouter.context import (
     to_anthropic_messages,
     to_openai_messages,
@@ -192,7 +198,8 @@ def dispatch_anthropic(
         "messages": messages,
     }
     if system_context:
-        kwargs["system"] = system_context
+        # [PHASE2_CACHE] Convert system string to Anthropic cached content block
+        kwargs["system"] = build_anthropic_system_with_cache(system_context)
 
     response = client.messages.create(**kwargs)
 
@@ -200,11 +207,15 @@ def dispatch_anthropic(
     tokens_in = response.usage.input_tokens
     tokens_out = response.usage.output_tokens
 
+    # [PHASE2_CACHE] Capture both cache creation and read tokens
+    cache_metrics = extract_anthropic_cache_metrics(response.usage)
+
     return {
         "content": content,
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
-        "tokens_cached": getattr(response.usage, "cache_read_input_tokens", 0) or 0,
+        "tokens_cached": cache_metrics["cache_read_tokens"],
+        **cache_metrics,
         **calculate_cost(model_config, tokens_in, tokens_out),
     }
 
@@ -229,11 +240,15 @@ def dispatch_openai(
     tokens_in = response.usage.prompt_tokens
     tokens_out = response.usage.completion_tokens
 
+    # [PHASE2_CACHE] Capture OpenAI automatic cache metrics
+    cache_metrics = extract_openai_cache_metrics(response.usage)
+
     return {
         "content": content,
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
-        "tokens_cached": 0,
+        "tokens_cached": cache_metrics["cache_read_tokens"],
+        **cache_metrics,
         **calculate_cost(model_config, tokens_in, tokens_out),
     }
 
@@ -259,11 +274,15 @@ def dispatch_google(
     tokens_in = usage.prompt_token_count
     tokens_out = usage.candidates_token_count
 
+    # [PHASE2_CACHE] Gemini cache metrics stub (Phase 6)
+    cache_metrics = extract_gemini_cache_metrics(None)
+
     return {
         "content": content,
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
         "tokens_cached": 0,
+        **cache_metrics,
         **calculate_cost(model_config, tokens_in, tokens_out),
     }
 

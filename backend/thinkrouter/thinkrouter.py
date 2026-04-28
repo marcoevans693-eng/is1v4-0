@@ -39,7 +39,7 @@ from backend.thinkrouter.summarize import summarize_conversation
 
 router = APIRouter(prefix="/api/thinkrouter", tags=["thinkrouter"])
 
-DUCKDB_PATH = Path(__file__).parent.parent.parent / "data" / "duckdb" / "is1v4_0.duckdb"
+DUCKDB_PATH = Path(__file__).parent.parent.parent / "data" / "duckdb" / "intellisys1_v4.duckdb"
 JSONL_PATH = Path(__file__).parent.parent.parent / "data" / "jsonl" / "governance.jsonl"
 
 TR_UPLOADS_DIR = "/opt/is1v4_0/data/tr_uploads"
@@ -262,8 +262,10 @@ def _duckdb_write_receipt(turn_id: str, conversation_id: str, seq: int, result: 
                 cost_in_usd, cost_out_usd, cost_total_usd,
                 system_prompt_hash, corpus,
                 is1_folder_id, is1_folder_name, rag_chunk_count,
-                included_chats, attached_files_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                included_chats, attached_files_count,
+                cache_creation_tokens, cache_read_tokens,
+                cache_savings_usd, provider_cache_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             turn_id, conversation_id, seq,
             result["provider"], result["model_sku"],
@@ -277,6 +279,10 @@ def _duckdb_write_receipt(turn_id: str, conversation_id: str, seq: int, result: 
             result.get("rag_chunk_count", 0),
             result.get("included_chats_count", 0),
             result.get("attached_files_count", 0),
+            result.get("cache_creation_tokens", 0),
+            result.get("cache_read_tokens", 0),
+            result.get("cache_savings_usd"),
+            result.get("provider_cache_type", "none"),
         ])
         db.close()
     except Exception as e:
@@ -1279,7 +1285,10 @@ def get_receipt(conversation_id: str, turn_id: str):
             "temperature", "max_tokens", "system_prompt_hash",
             "corpus", "is1_folder_id", "is1_folder_name",
             "rag_chunk_count", "included_chats", "attached_files_count",
-            "attached_files_total_bytes", "governance_jsonl_offset", "created_at",
+            "attached_files_total_bytes", "governance_jsonl_offset",
+            "cache_creation_tokens", "cache_read_tokens",
+            "cache_savings_usd", "provider_cache_type",
+            "created_at",
         ]
         return dict(zip(cols, row))
     except HTTPException:
