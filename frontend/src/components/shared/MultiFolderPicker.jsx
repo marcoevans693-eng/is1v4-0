@@ -1,32 +1,33 @@
-import { useState } from 'react'
-import FolderSelector from '../folders/FolderSelector'
+import { useState, useEffect } from 'react'
 import './MultiFolderPicker.css'
 
 /**
- * MultiFolderPicker — IS1 v4 multi-folder selection chip bar.
+ * MultiFolderPicker — IS1 v4 multi-folder chip bar.
  * Spec ref: §2.2 multi-folder retrieval with per-folder buckets.
- *
- * Props:
- *   selectedFolders: Array of folder objects { id, name }
- *   onChange(folders): called when folder list changes
- *   maxFolders: max selectable folders (default 3)
+ * Fetches folder list directly — no FolderSelector dependency.
+ * Native select stays in DOM at all times — no layout shift.
  */
 export default function MultiFolderPicker({ selectedFolders = [], onChange, maxFolders = 3 }) {
-  const [adding, setAdding] = useState(false)
-  const [selectorKey, setSelectorKey] = useState(0)
+  const [folders, setFolders] = useState([])
+  const [selectKey, setSelectKey] = useState(0)
 
-  function handleAdd(folder) {
-    // FolderSelector fires onChange(null) on deselect — ignore
-    if (!folder) {
-      setAdding(false)
-      return
-    }
-    // Deduplicate
+  useEffect(() => {
+    fetch('/api/thinkrouter/is1-folders')
+      .then(r => r.json())
+      .then(data => setFolders(data || []))
+      .catch(() => {})
+  }, [])
+
+  function handleSelectChange(e) {
+    const folderId = e.target.value
+    if (!folderId) return
+    const folder = folders.find(f => f.id === folderId)
+    if (!folder) return
     if (!selectedFolders.find(f => f.id === folder.id)) {
       onChange([...selectedFolders, folder])
     }
-    setAdding(false)
-    setSelectorKey(k => k + 1)
+    // Force-reset select to placeholder after pick
+    setSelectKey(k => k + 1)
   }
 
   function handleRemove(id) {
@@ -34,6 +35,7 @@ export default function MultiFolderPicker({ selectedFolders = [], onChange, maxF
   }
 
   const canAdd = selectedFolders.length < maxFolders
+  const available = folders.filter(f => !selectedFolders.find(s => s.id === f.id))
 
   return (
     <div className="mfp-root">
@@ -44,30 +46,24 @@ export default function MultiFolderPicker({ selectedFolders = [], onChange, maxF
             className="mfp-chip-remove"
             onClick={() => handleRemove(f.id)}
             title="Remove folder"
-          >
-            ×
-          </button>
+          >x</button>
         </span>
       ))}
-
-      {adding ? (
-        <div className="mfp-selector-wrap">
-          <FolderSelector
-            key={selectorKey}
-            selectedFolder={null}
-            onChange={handleAdd}
-            direction="up"
-          />
-        </div>
-      ) : canAdd ? (
-        <button
-          className="mfp-add-btn"
-          onClick={() => setAdding(true)}
-          title={selectedFolders.length === 0 ? 'Select folder for RAG' : 'Add another folder'}
+      {canAdd && (
+        <select
+          key={selectKey}
+          className="mfp-select"
+          value=""
+          onChange={handleSelectChange}
         >
-          {selectedFolders.length === 0 ? 'No folder' : '+ folder'}
-        </button>
-      ) : null}
+          <option value="">
+            {selectedFolders.length === 0 ? 'No folder' : '+ folder'}
+          </option>
+          {available.map(f => (
+            <option key={f.id} value={f.id}>{f.name}</option>
+          ))}
+        </select>
+      )}
     </div>
   )
 }
