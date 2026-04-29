@@ -226,7 +226,8 @@ class AppendTurnRequest(BaseModel):
     content: str
     model_sku: str
     corpus: str = "none"
-    is1_folder_id: Optional[str] = None
+    is1_folder_id: Optional[str] = None       # legacy single-folder, kept for backward compat
+    is1_folder_ids: List[str] = []             # multi-folder — takes priority when set
     include_chat_ids: Optional[List[str]] = []
     attached_files: Optional[List[dict]] = []
     attachment_ids: list[str] = []
@@ -960,18 +961,23 @@ def append_turn(
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         # --- Validate corpus/folder combination ---
-        if body.corpus == "is1" and not body.is1_folder_id:
+        if body.corpus == "is1" and not body.is1_folder_id and not body.is1_folder_ids:
             raise HTTPException(
                 status_code=400,
-                detail="is1_folder_id is required when corpus='is1'"
+                detail="is1_folder_id or is1_folder_ids required when corpus='is1'"
             )
 
-        if body.corpus == "is1" and body.is1_folder_id:
-            cur.execute(
-                "SELECT id FROM folders WHERE id=%s::uuid", (body.is1_folder_id,)
+        # Resolve primary folder ID for schema storage + validate all folder IDs exist
+        primary_folder_id = None
+        if body.corpus == "is1":
+            primary_folder_id = body.is1_folder_ids[0] if body.is1_folder_ids else body.is1_folder_id
+            folders_to_validate = body.is1_folder_ids if body.is1_folder_ids else (
+                [body.is1_folder_id] if body.is1_folder_id else []
             )
-            if not cur.fetchone():
-                raise HTTPException(status_code=404, detail="IS1 folder not found")
+            for fid in folders_to_validate:
+                cur.execute("SELECT id FROM folders WHERE id=%s::uuid", (fid,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail=f"IS1 folder not found: {fid}")
 
         # --- Resolve attachment content ---
         user_content = body.content
@@ -1015,7 +1021,7 @@ def append_turn(
             (
                 user_turn_id, conversation_id, user_seq, "user", user_content,
                 body.corpus,
-                body.is1_folder_id if body.corpus == "is1" else None,
+                primary_folder_id,
                 json.dumps(body.attached_files) if body.attached_files else None,
             ),
         )
@@ -1039,7 +1045,8 @@ def append_turn(
         "seq": user_seq,
         "role": "user",
         "corpus": body.corpus,
-        "is1_folder_id": body.is1_folder_id,
+        "is1_folder_id": primary_folder_id,
+        "is1_folder_ids": body.is1_folder_ids if body.is1_folder_ids else None,
     })
 
     # --- Load full conversation history (non-superseded turns only) ---
@@ -1129,6 +1136,7 @@ def append_turn(
             is1_folder_id=body.is1_folder_id,
             included_chats=included_chats_context if included_chats_context else None,
             attached_files=body.attached_files if body.attached_files else None,
+            is1_folder_ids=body.is1_folder_ids if body.is1_folder_ids else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1199,7 +1207,7 @@ def append_turn(
         result={
             **result,
             "corpus": body.corpus,
-            "is1_folder_id": body.is1_folder_id,
+            "is1_folder_id": primary_folder_id,
             "attached_files_count": len(body.attached_files) if body.attached_files else 0,
             "included_chats_count": len(included_chats_context),
         },

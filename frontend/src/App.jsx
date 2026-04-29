@@ -10,7 +10,7 @@ import StatusBar from './components/shell/StatusBar'
 import CommandPalette from './components/shell/CommandPalette'
 
 // Module components
-import ChatView from './components/chat/ChatView'
+
 import IngestPanel from './components/ingest/IngestPanel'
 import KnowledgeExplorer from './components/knowledge/KnowledgeExplorer'
 import KnowledgeDocDetail from './components/knowledge/KnowledgeDocDetail'
@@ -50,8 +50,10 @@ function AppShell() {
         <main className="is1-shell-canvas">
           <ErrorBoundary>
             <Routes>
-              {/* Chat */}
-              <Route path="/" element={<ChatView />} />
+              {/* Chat �� unified ThinkRouter surface (Phase 4B) */}
+              <Route path="/" element={<ThinkRouterLayout />} />
+              <Route path="/chat/usage" element={<UsageDashboard />} />
+              <Route path="/chat/*" element={<ThinkRouterLayout />} />
 
               {/* Knowledge cluster */}
               <Route path="/knowledge" element={<ErrorBoundary><KnowledgeExplorer /></ErrorBoundary>} />
@@ -70,9 +72,7 @@ function AppShell() {
               <Route path="/events" element={<ComingSoon moduleName="Events" />} />
               <Route path="/capaproxy" element={<ComingSoon moduleName="CapaProxy" />} />
 
-              {/* ThinkRouter — temporary, retires Phase 4B */}
-              <Route path="/thinkrouter/usage" element={<UsageDashboard />} />
-              <Route path="/thinkrouter/*" element={<ThinkRouterLayout />} />
+
             </Routes>
           </ErrorBoundary>
         </main>

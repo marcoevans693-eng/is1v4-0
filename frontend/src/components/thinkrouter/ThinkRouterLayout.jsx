@@ -18,28 +18,28 @@ export default function ThinkRouterLayout() {
   function handleSelect(id) {
     setActiveConversationId(id)
     setScrollToTurnId(null)
-    navigate('/thinkrouter')
+    navigate('/chat')
   }
 
   function handleNewConversation(id) {
     setActiveConversationId(id)
     setScrollToTurnId(null)
     setRefreshTrigger(n => n + 1)
-    navigate('/thinkrouter')
+    navigate('/chat')
   }
 
   // Called from ChatSearch when user clicks a result
   function handleSearchSelect(conversationId, turnId) {
     setActiveConversationId(conversationId)
     setScrollToTurnId(turnId)
-    navigate('/thinkrouter')
+    navigate('/chat')
   }
 
   // Determine which right pane to render
   let rightPane
-  if (path.startsWith('/thinkrouter/search')) {
+  if (path.startsWith('/chat/search')) {
     rightPane = <ChatSearch onSelect={handleSearchSelect} />
-  } else if (path.startsWith('/thinkrouter/all')) {
+  } else if (path.startsWith('/chat/all')) {
     rightPane = <AllChats onSelect={(id) => handleSelect(id)} />
   } else {
     rightPane = (

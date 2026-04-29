@@ -4,7 +4,7 @@ import ReceiptPanel from './ReceiptPanel'
 import ModelSelector from './ModelSelector'
 import IncludedPill from './IncludedPill'
 import IncludeChatModal from './IncludeChatModal'
-import FolderSelector from '../folders/FolderSelector'
+import MultiFolderPicker from '../shared/MultiFolderPicker'
 import './ChatView.css'
 
 const ALLOWED_EXTS = new Set([
@@ -37,7 +37,7 @@ export default function ChatView({ conversationId, scrollToTurnId = null, onScro
   const [showIncludeModal, setShowIncludeModal] = useState(false)
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
-  const [selectedFolder, setSelectedFolder] = useState(null)
+  const [selectedFolders, setSelectedFolders] = useState([])
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -210,7 +210,7 @@ export default function ChatView({ conversationId, scrollToTurnId = null, onScro
     setSendError(null)
     setInput('')
     setAttachments([])
-    setSelectedFolder(null)
+    setSelectedFolders([])
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
     const optUserId = `opt-user-${Date.now()}`
@@ -227,8 +227,8 @@ export default function ChatView({ conversationId, scrollToTurnId = null, onScro
         body: JSON.stringify({
           content: text,
           model_sku: selectedSku,
-          corpus: selectedFolder ? 'is1' : 'none',
-          is1_folder_id: selectedFolder?.id || null,
+          corpus: selectedFolders.length > 0 ? 'is1' : 'none',
+          is1_folder_ids: selectedFolders.map(f => f.id),
           include_chat_ids: includedChats.map(c => c.target_conv_id),
           attachment_ids: attachments.map(a => a.id),
         }),
@@ -356,10 +356,9 @@ export default function ChatView({ conversationId, scrollToTurnId = null, onScro
             >
               🔗 Include Chat
             </button>
-            <FolderSelector
-              selectedFolder={selectedFolder}
-              onChange={setSelectedFolder}
-              direction="up"
+            <MultiFolderPicker
+              selectedFolders={selectedFolders}
+              onChange={setSelectedFolders}
             />
             <button
               className="attach-btn"

@@ -1,0 +1,66 @@
+.mfp-root {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Folder chip */
+.mfp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #EEF4F7;
+  border: 1px solid #C8DBE4;
+  border-radius: 14px;
+  padding: 2px 8px 2px 10px;
+  font-size: 12px;
+  color: #1F1F1F;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.mfp-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mfp-chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6B6B6B;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 50%;
+  transition: color 0.15s;
+}
+
+.mfp-chip-remove:hover {
+  color: #1F1F1F;
+}
+
+/* Add button */
+.mfp-add-btn {
+  background: none;
+  border: 1px dashed #C8DBE4;
+  border-radius: 14px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: #6B6B6B;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.mfp-add-btn:hover {
+  border-color: #5B8FA8;
+  color: #5B8FA8;
+}
+
+/* FolderSelector wrapper when in add mode */
+.mfp-selector-wrap {
+  display: inline-block;
+}

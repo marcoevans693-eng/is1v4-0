@@ -311,6 +311,7 @@ def dispatch_turn(
     is1_folder_id: Optional[str],
     included_chats: Optional[List[Dict]],
     attached_files: Optional[List[Dict]],
+    is1_folder_ids: Optional[List[str]] = None,
 ) -> Dict:
     """
     Main entry point. Called by the turns endpoint after the user turn is persisted.
@@ -334,36 +335,46 @@ def dispatch_turn(
     if not dispatch_fn:
         raise ValueError(f"No dispatch function for provider: {provider}")
 
-    # Retrieve RAG chunks if corpus='is1'
+    # Retrieve RAG chunks if corpus='is1' — supports multi-folder
+    # is1_folder_ids (list) takes priority over legacy is1_folder_id (single)
     rag_chunks = []
     is1_folder_name = None
-    if corpus == "is1" and is1_folder_id:
-        # Get folder name for receipt snapshot
-        conn = psycopg2.connect(
-            host=_settings.POSTGRES_HOST,
-            port=_settings.POSTGRES_PORT,
-            dbname=_settings.POSTGRES_DB,
-            user=_settings.POSTGRES_USER,
-            password=_settings.POSTGRES_PASSWORD,
-        )
-        try:
-            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute("SELECT name FROM folders WHERE id = %s::uuid", (is1_folder_id,))
-            folder_row = cur.fetchone()
-            if folder_row:
-                is1_folder_name = folder_row["name"]
-            cur.close()
-        finally:
-            conn.close()
+    if corpus == "is1":
+        folder_ids = is1_folder_ids if is1_folder_ids else ([is1_folder_id] if is1_folder_id else [])
+        if folder_ids:
+            user_turns = [t for t in turns if t["role"] == "user"]
+            query = user_turns[-1]["content"] if user_turns else ""
 
-        # Use the last user turn content as the retrieval query
-        user_turns = [t for t in turns if t["role"] == "user"]
-        query = user_turns[-1]["content"] if user_turns else ""
+            # Fetch all folder names in one query
+            conn = psycopg2.connect(
+                host=_settings.POSTGRES_HOST,
+                port=_settings.POSTGRES_PORT,
+                dbname=_settings.POSTGRES_DB,
+                user=_settings.POSTGRES_USER,
+                password=_settings.POSTGRES_PASSWORD,
+            )
+            try:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute(
+                    "SELECT id::text, name FROM folders WHERE id::text = ANY(%s::text[])",
+                    (folder_ids,),
+                )
+                folder_name_map = {r["id"]: r["name"] for r in cur.fetchall()}
+                cur.close()
+            finally:
+                conn.close()
 
-        rag_chunks = retrieve_is1_chunks(
-            query=query,
-            folder_id=is1_folder_id,
-        )
+            folder_names = []
+            for fid in folder_ids:
+                fname = folder_name_map.get(fid, fid)
+                folder_names.append(fname)
+                chunks = retrieve_is1_chunks(query=query, folder_id=fid)
+                # Label each chunk title with its source folder
+                for chunk in chunks:
+                    chunk["title"] = f"[{fname}] {chunk['title']}"
+                rag_chunks.extend(chunks)
+
+            is1_folder_name = ", ".join(folder_names)
 
     # Build system context
     system_context = build_system_context(

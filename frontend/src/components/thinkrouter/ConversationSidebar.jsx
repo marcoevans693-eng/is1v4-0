@@ -151,13 +151,13 @@ export default function ConversationSidebar({ activeId, onSelect, onNewConversat
         ))}
       </div>
       <div className="conv-footer">
-        <div className="conv-footer-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/thinkrouter/search')}>
+        <div className="conv-footer-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/chat/search')}>
           Search chats
         </div>
-        <div className="conv-footer-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/thinkrouter/all')}>
+        <div className="conv-footer-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/chat/all')}>
           All chats
         </div>
-        <div className="conv-footer-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/thinkrouter/usage')}>
+        <div className="conv-footer-item" style={{ cursor: 'pointer' }} onClick={() => navigate('/chat/usage')}>
           Usage &amp; receipts
         </div>
       </div>

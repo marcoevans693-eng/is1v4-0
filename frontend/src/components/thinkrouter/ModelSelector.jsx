@@ -10,8 +10,11 @@ export default function ModelSelector({ selectedSku, onSelect }) {
       .then(r => r.json())
       .then(data => {
         setModels(data)
-        if (data.length > 0 && !selectedSku) {
-          onSelect(data[0].sku)
+        if (!selectedSku) {
+          const defaultModel =
+            data.find(m => m.default && m.status !== 'stub') ||
+            data.find(m => m.status !== 'stub')
+          if (defaultModel) onSelect(defaultModel.sku)
         }
       })
       .catch(() => setError(true))
@@ -26,7 +29,9 @@ export default function ModelSelector({ selectedSku, onSelect }) {
       onChange={e => onSelect(e.target.value)}
     >
       {models.map(m => (
-        <option key={m.sku} value={m.sku}>{m.label}</option>
+        <option key={m.sku} value={m.sku} disabled={m.status === 'stub'}>
+          {m.label}{m.status === 'stub' ? ' · Phase 9' : ''}
+        </option>
       ))}
     </select>
   )

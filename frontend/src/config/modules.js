@@ -51,13 +51,7 @@ export const RAIL_MODULES = [
     defaultRoute: '/capaproxy',
     status: 'placeholder',
   },
-  {
-    id: 'thinkrouter',
-    label: 'IS1-TR',
-    icon: 'Brain',
-    defaultRoute: '/thinkrouter',
-    status: 'active',   // temporary — retires in Phase 4B
-  },
+
 ]
 
 // Legacy export retained for any files still referencing MODULES
